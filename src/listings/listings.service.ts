@@ -183,6 +183,44 @@ export class ListingsService {
       .map(toListingPublic);
   }
 
+  async getRecord(listingId: string): Promise<ListingRecord | undefined> {
+    const k = Keys.listing(listingId) as { PK: string; SK: 'METADATA' };
+    return this.db.get<ListingRecord>(k.PK, k.SK);
+  }
+
+  async addPhotoKey(sellerId: string, listingId: string, key: string): Promise<ListingPublic> {
+    const k = Keys.listing(listingId) as { PK: string; SK: 'METADATA' };
+    const record = await this.db.get<ListingRecord>(k.PK, k.SK);
+    if (!record) throw new NotFoundException('Listing not found');
+    if (record.sellerId !== sellerId) throw new ForbiddenException('Not your listing');
+    if (record.status === 'REMOVED') throw new BadRequestException('Listing already removed');
+
+    const now = new Date().toISOString();
+    const updated = [...record.photoKeys, key];
+    await this.db.update({
+      Key:                       { PK: k.PK, SK: k.SK },
+      UpdateExpression:          'SET photoKeys = :keys, updatedAt = :now',
+      ExpressionAttributeValues: { ':keys': updated, ':now': now },
+    });
+    return toListingPublic({ ...record, photoKeys: updated, updatedAt: now });
+  }
+
+  async removePhotoKey(sellerId: string, listingId: string, key: string): Promise<ListingPublic> {
+    const k = Keys.listing(listingId) as { PK: string; SK: 'METADATA' };
+    const record = await this.db.get<ListingRecord>(k.PK, k.SK);
+    if (!record) throw new NotFoundException('Listing not found');
+    if (record.sellerId !== sellerId) throw new ForbiddenException('Not your listing');
+
+    const now = new Date().toISOString();
+    const updated = record.photoKeys.filter((p) => p !== key);
+    await this.db.update({
+      Key:                       { PK: k.PK, SK: k.SK },
+      UpdateExpression:          'SET photoKeys = :keys, updatedAt = :now',
+      ExpressionAttributeValues: { ':keys': updated, ':now': now },
+    });
+    return toListingPublic({ ...record, photoKeys: updated, updatedAt: now });
+  }
+
   async remove(sellerId: string, listingId: string): Promise<void> {
     const k = Keys.listing(listingId) as { PK: string; SK: 'METADATA' };
     const record = await this.db.get<ListingRecord>(k.PK, k.SK);

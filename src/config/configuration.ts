@@ -120,6 +120,27 @@ class EnvVars {
 
   @IsString()
   LGPD_PRIVACY_POLICY_URL!: string;
+
+  // ── Cloudflare R2 ──────────────────────────────────────────────────────────
+  @IsString()
+  @IsOptional()
+  R2_ACCOUNT_ID?: string;
+
+  @IsString()
+  @IsOptional()
+  R2_ACCESS_KEY_ID?: string;
+
+  @IsString()
+  @IsOptional()
+  R2_SECRET_ACCESS_KEY?: string;
+
+  @IsString()
+  @IsOptional()
+  R2_BUCKET_NAME?: string;
+
+  @IsString()
+  @IsOptional()
+  R2_PUBLIC_URL?: string;
 }
 
 export function validateEnv(raw: Record<string, unknown>): EnvVars {
@@ -175,6 +196,13 @@ export interface AppConfig {
     consentVersion: string;
     privacyPolicyUrl: string;
   };
+  r2: {
+    accountId?: string;
+    accessKeyId?: string;
+    secretAccessKey?: string;
+    bucketName?: string;
+    publicUrl?: string;
+  };
 }
 
 export default (): AppConfig => {
@@ -217,6 +245,13 @@ export default (): AppConfig => {
     lgpd: {
       consentVersion: env.LGPD_CONSENT_VERSION ?? '2026-04-29',
       privacyPolicyUrl: env.LGPD_PRIVACY_POLICY_URL!,
+    },
+    r2: {
+      accountId:       env.R2_ACCOUNT_ID,
+      accessKeyId:     env.R2_ACCESS_KEY_ID,
+      secretAccessKey: env.R2_SECRET_ACCESS_KEY,
+      bucketName:      env.R2_BUCKET_NAME,
+      publicUrl:       env.R2_PUBLIC_URL || undefined,
     },
   };
 };
