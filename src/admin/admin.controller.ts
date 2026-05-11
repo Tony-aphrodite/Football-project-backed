@@ -1,11 +1,13 @@
-import { Controller, Get, HttpCode, Param, Patch, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, Patch, Post, UseGuards } from '@nestjs/common';
 
 import { AdminGuard } from '../common/guards/admin.guard';
-import { AdminService, type AdminStats } from './admin.service';
+import { AdminService, type AdminStats, type CreateCouponDto } from './admin.service';
 import type { ReportWithComment } from './entities/report.entity';
 import type { UserPublic } from '../users/entities/user.entity';
 import type { ListingPublic } from '../listings/entities/listing.entity';
 import type { OrderPublic } from '../orders/entities/order.entity';
+import type { CreateListingDto } from '../listings/dto/create-listing.dto';
+import type { CreateQuizDto } from '../quiz/dto/create-quiz.dto';
 
 @Controller('admin')
 @UseGuards(AdminGuard)
@@ -75,5 +77,58 @@ export class AdminController {
   @HttpCode(204)
   dismiss(@Param('reportId') reportId: string): Promise<void> {
     return this.admin.dismissReport(reportId);
+  }
+
+  // ── Coupons ────────────────────────────────────────────────────────────────
+
+  @Post('coupons')
+  createCoupon(@Body() dto: CreateCouponDto) {
+    return this.admin.createCoupon(dto);
+  }
+
+  @Get('coupons')
+  listCoupons() {
+    return this.admin.listCoupons();
+  }
+
+  @Patch('coupons/:code/toggle')
+  @HttpCode(204)
+  toggleCoupon(@Param('code') code: string) {
+    return this.admin.toggleCoupon(code);
+  }
+
+  // ── MPC ────────────────────────────────────────────────────────────────────
+
+  @Post('mpc')
+  createMpc(@Body() dto: CreateListingDto) {
+    return this.admin.createMpcListing(dto);
+  }
+
+  @Get('mpc')
+  listMpc() {
+    return this.admin.listMpcListings();
+  }
+
+  // ── Quiz ───────────────────────────────────────────────────────────────────
+
+  @Post('quiz')
+  createQuiz(@Body() dto: CreateQuizDto) {
+    return this.admin.createQuiz(dto);
+  }
+
+  @Get('quiz')
+  listQuizzes() {
+    return this.admin.listQuizzes();
+  }
+
+  @Patch('quiz/:quizId/close')
+  @HttpCode(204)
+  closeQuiz(@Param('quizId') quizId: string) {
+    return this.admin.closeQuiz(quizId);
+  }
+
+  @Get('quiz/:quizId/results')
+  getQuizResults(@Param('quizId') quizId: string) {
+    return this.admin.getQuizResults(quizId);
   }
 }

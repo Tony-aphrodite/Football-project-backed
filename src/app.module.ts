@@ -15,6 +15,9 @@ import { AdminModule } from './admin/admin.module';
 import { CommentsModule } from './comments/comments.module';
 import { RatingsModule } from './ratings/ratings.module';
 import { OrdersModule } from './orders/orders.module';
+import { PaymentsModule } from './payments/payments.module';
+import { SearchModule } from './search/search.module';
+import { QuizModule } from './quiz/quiz.module';
 
 @Module({
   imports: [
@@ -42,6 +45,9 @@ import { OrdersModule } from './orders/orders.module';
     CommentsModule,
     RatingsModule,
     OrdersModule,
+    PaymentsModule,
+    SearchModule,
+    QuizModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

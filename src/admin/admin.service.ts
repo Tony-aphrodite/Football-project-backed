@@ -7,6 +7,20 @@ import type { CommentRecord } from '../comments/entities/comment.entity';
 import { toPublic, type UserRecord, type UserPublic } from '../users/entities/user.entity';
 import { toListingPublic, type ListingRecord, type ListingPublic } from '../listings/entities/listing.entity';
 import { toOrderPublic, type OrderRecord, type OrderPublic } from '../orders/entities/order.entity';
+import { ulid } from 'ulid';
+import { ListingsService } from '../listings/listings.service';
+import { QuizService } from '../quiz/quiz.service';
+import type { CouponRecord } from '../coupons/entities/coupon.entity';
+import type { CreateListingDto } from '../listings/dto/create-listing.dto';
+import type { CreateQuizDto } from '../quiz/dto/create-quiz.dto';
+import type { QuizRecord } from '../quiz/entities/quiz.entity';
+
+export interface CreateCouponDto {
+  code: string;
+  discountPct: number;
+  description: string;
+  maxRedemptions: number;
+}
 
 export interface AdminStats {
   totalUsers: number;
@@ -15,9 +29,15 @@ export interface AdminStats {
   pendingReports: number;
 }
 
+const ADMIN_SELLER_ID = 'ADMIN_ARENA_DOS_MANTOS';
+
 @Injectable()
 export class AdminService {
-  constructor(private readonly db: DynamoDbService) {}
+  constructor(
+    private readonly db: DynamoDbService,
+    private readonly listings: ListingsService,
+    private readonly quiz: QuizService,
+  ) {}
 
   // ── Stats ──────────────────────────────────────────────────────────────────
 
@@ -234,6 +254,120 @@ export class AdminService {
         ':now':       now,
       },
     });
+  }
+
+  // ── Coupons ───────────────────────────────────────────────────────────────
+
+  async createCoupon(dto: CreateCouponDto): Promise<CouponRecord> {
+    const code = dto.code.trim().toUpperCase();
+    const ck = Keys.coupon(code);
+    const item: CouponRecord = {
+      PK:              ck.PK,
+      SK:              'METADATA' as const,
+      entityType:      'Coupon',
+      code,
+      discountPct:     dto.discountPct,
+      description:     dto.description,
+      maxRedemptions:  dto.maxRedemptions,
+      redemptionCount: 0,
+      active:          true,
+      createdAt:       new Date().toISOString(),
+    };
+    await this.db.put(item as unknown as Record<string, unknown>, {
+      conditionExpression: 'attribute_not_exists(PK)',
+    });
+    return item;
+  }
+
+  async listCoupons(): Promise<CouponRecord[]> {
+    return this.db.scan<CouponRecord>({
+      FilterExpression: 'entityType = :t',
+      ExpressionAttributeValues: { ':t': 'Coupon' },
+    });
+  }
+
+  async toggleCoupon(code: string): Promise<void> {
+    const ck = Keys.coupon(code.toUpperCase());
+    const coupon = await this.db.get<CouponRecord>(ck.PK, ck.SK);
+    if (!coupon) throw new NotFoundException('Cupom não encontrado');
+    await this.db.update({
+      Key:                       { PK: ck.PK, SK: ck.SK },
+      UpdateExpression:          'SET active = :v',
+      ExpressionAttributeValues: { ':v': !coupon.active },
+    });
+  }
+
+  // ── MPC Listings ──────────────────────────────────────────────────────────
+
+  async createMpcListing(dto: CreateListingDto): Promise<ListingPublic> {
+    const now       = new Date().toISOString();
+    const listingId = ulid();
+    const lk        = Keys.listing(listingId);
+    const refKey    = Keys.userListingRef(ADMIN_SELLER_ID, now, listingId);
+
+    const listing: ListingRecord = {
+      PK:          lk.PK,
+      SK:          'METADATA' as const,
+      entityType:  'Listing',
+      listingId,
+      sellerId:    ADMIN_SELLER_ID,
+      sellerName:  'Arena dos Mantos',
+      kind:        dto.kind,
+      teamName:    dto.teamName,
+      continent:   dto.continent,
+      country:     dto.country,
+      season:      dto.season,
+      supplier:    dto.supplier,
+      model:       dto.model,
+      garmentType: dto.garmentType,
+      size:        dto.size,
+      condition:   dto.condition,
+      gender:      dto.gender,
+      priceCents:  14900,
+      description: dto.description,
+      photoKeys:   [],
+      isMpc:       true,
+      nonVerifiedSupplierAck: true,
+      status:      'ACTIVE',
+      ...Gsi.listingFeed('ACTIVE'),
+      ...Gsi.listingMpc('ACTIVE'),
+      GSI1SK:      `${now}#${listingId}`,
+      createdAt:   now,
+      updatedAt:   now,
+    };
+
+    await this.db.transactWrite([
+      { Put: { TableName: this.db.tableName, Item: listing as unknown as Record<string, unknown>, ConditionExpression: 'attribute_not_exists(PK)' } },
+      { Put: { TableName: this.db.tableName, Item: { ...refKey, entityType: 'UserListingRef', listingId, status: 'ACTIVE' } } },
+    ]);
+
+    return toListingPublic(listing);
+  }
+
+  async listMpcListings(): Promise<ListingPublic[]> {
+    return this.db.query<ListingRecord>({
+      IndexName:                 'GSI2',
+      KeyConditionExpression:    'GSI2PK = :pk',
+      ExpressionAttributeValues: { ':pk': Gsi.listingMpc('ACTIVE').GSI2PK },
+    }).then((rows) => rows.map(toListingPublic));
+  }
+
+  // ── Quiz ──────────────────────────────────────────────────────────────────
+
+  async createQuiz(dto: CreateQuizDto): Promise<QuizRecord> {
+    return this.quiz.create(dto);
+  }
+
+  async listQuizzes(): Promise<QuizRecord[]> {
+    return this.quiz.listAll();
+  }
+
+  async closeQuiz(quizId: string): Promise<void> {
+    return this.quiz.close(quizId);
+  }
+
+  async getQuizResults(quizId: string) {
+    return this.quiz.getResults(quizId);
   }
 
   private async findReport(reportId: string): Promise<ReportRecord> {
