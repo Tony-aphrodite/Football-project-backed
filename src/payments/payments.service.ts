@@ -12,6 +12,7 @@ import { OrderRecord } from '../orders/entities/order.entity';
 import { PagarmeService } from './pagarme.service';
 import { ShippingService } from '../shipping/shipping.service';
 import { UsersService } from '../users/users.service';
+import { DeveloperEarningsService } from '../developer-earnings/developer-earnings.service';
 
 export interface PixPaymentResult {
   orderId: string;
@@ -34,10 +35,11 @@ export class PaymentsService {
   private readonly logger = new Logger(PaymentsService.name);
 
   constructor(
-    private readonly db:       DynamoDbService,
-    private readonly pagarme:  PagarmeService,
-    private readonly shipping: ShippingService,
-    private readonly users:    UsersService,
+    private readonly db:        DynamoDbService,
+    private readonly pagarme:   PagarmeService,
+    private readonly shipping:  ShippingService,
+    private readonly users:     UsersService,
+    private readonly devEarnings: DeveloperEarningsService,
   ) {}
 
   // ── Initiate PIX ─────────────────────────────────────────────────────────
@@ -242,22 +244,49 @@ export class PaymentsService {
       });
 
       if (result) {
+        // Calculate spread: buyer paid shipping − actual Melhor Envio cost
+        const spreadCents = Math.max(0, order.shippingCents - result.actualCostCents);
+
+        // Record spread → determine beneficiary (developer vs Arena)
+        const spreadResult = spreadCents > 0
+          ? await this.devEarnings.recordSpread(spreadCents)
+          : { beneficiary: 'ARENA' as const, developerGets: 0, arenaGets: 0 };
+
         const orderKey = Keys.order(order.orderId);
         await this.db.update({
           Key: { PK: orderKey.PK, SK: orderKey.SK },
-          UpdateExpression: 'SET melhorEnvioOrderId = :m, shippingLabelUrl = :l, shippingTrackingCode = :t, shippingCarrier = :c, shippingService = :s, #st = :shipped, updatedAt = :now',
+          UpdateExpression: [
+            'SET melhorEnvioOrderId = :m',
+            'shippingLabelUrl = :l',
+            'shippingTrackingCode = :t',
+            'shippingCarrier = :c',
+            'shippingService = :s',
+            'shippingActualCostCents = :actual',
+            'shippingSpreadCents = :spread',
+            'spreadBeneficiary = :beneficiary',
+            '#st = :shipped',
+            'updatedAt = :now',
+          ].join(', '),
           ExpressionAttributeNames: { '#st': 'status' },
           ExpressionAttributeValues: {
-            ':m':       result.melhorEnvioOrderId,
-            ':l':       result.labelUrl,
-            ':t':       result.trackingCode,
-            ':c':       result.carrier,
-            ':s':       result.service,
-            ':shipped': 'SHIPPED',
-            ':now':     new Date().toISOString(),
+            ':m':           result.melhorEnvioOrderId,
+            ':l':           result.labelUrl,
+            ':t':           result.trackingCode,
+            ':c':           result.carrier,
+            ':s':           result.service,
+            ':actual':      result.actualCostCents,
+            ':spread':      spreadCents,
+            ':beneficiary': spreadResult.beneficiary,
+            ':shipped':     'SHIPPED',
+            ':now':         new Date().toISOString(),
           },
         });
-        this.logger.log(`Label purchased for order ${order.orderId}, tracking: ${result.trackingCode}`);
+
+        this.logger.log(
+          `Order ${order.orderId} shipped. Tracking: ${result.trackingCode}. ` +
+          `Spread: R$${(spreadCents / 100).toFixed(2)} → ${spreadResult.beneficiary} ` +
+          `(developer: R$${(spreadResult.developerGets / 100).toFixed(2)}, arena: R$${(spreadResult.arenaGets / 100).toFixed(2)})`
+        );
       }
     } catch (err) {
       this.logger.error(`Label purchase failed for order ${order.orderId}`, err);

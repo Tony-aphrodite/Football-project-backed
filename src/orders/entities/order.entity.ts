@@ -41,11 +41,14 @@ export interface OrderRecord {
   pixExpiresAt?:    string;
   escrowReleaseAt?: string;
   correiosTracking?: string;
-  melhorEnvioOrderId?:   string;
-  shippingLabelUrl?:     string;
-  shippingTrackingCode?: string;
-  shippingCarrier?:      string;
-  shippingService?:      string;
+  melhorEnvioOrderId?:      string;
+  shippingLabelUrl?:        string;
+  shippingTrackingCode?:    string;
+  shippingCarrier?:         string;
+  shippingService?:         string;
+  shippingActualCostCents?: number;   // actual cost paid to Melhor Envio
+  shippingSpreadCents?:     number;   // buyer paid − actual cost = spread
+  spreadBeneficiary?:       'DEVELOPER' | 'ARENA';
   GSI1PK:      string;   // ORDER_BUYER#${buyerId}
   GSI1SK:      string;   // ${createdAt}#${orderId}
   GSI2PK:      string;   // ORDER_SELLER#${sellerId}
@@ -81,11 +84,14 @@ export interface OrderPublic {
   pixExpiresAt?:    string;
   escrowReleaseAt?: string;
   correiosTracking?: string;
-  melhorEnvioOrderId?:   string;
-  shippingLabelUrl?:     string;
-  shippingTrackingCode?: string;
-  shippingCarrier?:      string;
-  shippingService?:      string;
+  melhorEnvioOrderId?:      string;
+  shippingLabelUrl?:        string;
+  shippingTrackingCode?:    string;
+  shippingCarrier?:         string;
+  shippingService?:         string;
+  shippingActualCostCents?: number;
+  shippingSpreadCents?:     number;
+  spreadBeneficiary?:       'DEVELOPER' | 'ARENA';
   createdAt:      string;
   updatedAt:      string;
 }
@@ -107,11 +113,14 @@ export function toOrderPublic(o: OrderRecord): OrderPublic {
     pixExpiresAt:     o.pixExpiresAt,
     escrowReleaseAt:       o.escrowReleaseAt,
     correiosTracking:      o.correiosTracking,
-    melhorEnvioOrderId:    o.melhorEnvioOrderId,
-    shippingLabelUrl:      o.shippingLabelUrl,
-    shippingTrackingCode:  o.shippingTrackingCode,
-    shippingCarrier:       o.shippingCarrier,
-    shippingService:       o.shippingService,
+    melhorEnvioOrderId:       o.melhorEnvioOrderId,
+    shippingLabelUrl:         o.shippingLabelUrl,
+    shippingTrackingCode:     o.shippingTrackingCode,
+    shippingCarrier:          o.shippingCarrier,
+    shippingService:          o.shippingService,
+    shippingActualCostCents:  o.shippingActualCostCents,
+    shippingSpreadCents:      o.shippingSpreadCents,
+    spreadBeneficiary:        o.spreadBeneficiary,
     createdAt: o.createdAt, updatedAt: o.updatedAt,
   };
 }

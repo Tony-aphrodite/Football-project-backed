@@ -15,6 +15,7 @@ export interface LabelResult {
   carrier:             string;
   service:             string;
   labelUrl:            string;
+  actualCostCents:     number;   // actual amount paid to Melhor Envio
 }
 
 interface MelhorEnvioQuote {
@@ -33,6 +34,7 @@ interface CartItem {
   tracking: string;
   carrier:  { name: string };
   link?:    string;
+  price?:   string;   // actual cost charged by Melhor Envio
 }
 
 interface TrackingEvent {
@@ -213,7 +215,11 @@ export class ShippingService {
       });
       const labelUrl = printRes.ok ? ((await printRes.json()) as { url: string }).url : '';
 
-      this.logger.log(`Label purchased for order ${params.orderId}, tracking: ${cartItem.tracking}`);
+      const actualCostCents = cartItem.price
+        ? Math.round(parseFloat(cartItem.price) * 100)
+        : 0;
+
+      this.logger.log(`Label purchased for order ${params.orderId}, tracking: ${cartItem.tracking}, cost: R$${cartItem.price ?? '?'}`);
 
       return {
         melhorEnvioOrderId: cartItem.id,
@@ -221,6 +227,7 @@ export class ShippingService {
         carrier:            cartItem.carrier?.name ?? 'Correios',
         service:            cartItem.service?.name ?? '',
         labelUrl,
+        actualCostCents,
       };
     } catch (err) {
       this.logger.error('Melhor Envio label purchase failed', err);
