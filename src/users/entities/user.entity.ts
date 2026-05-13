@@ -38,6 +38,9 @@ export interface UserRecord {
   ratingAvgAsBuyer?: number;
   ratingCountAsBuyer: number;
 
+  // Seller shipping origin ZIP code (for Melhor Envio quoting)
+  sellerCep?: string;
+
   // Soft caps enforced server-side.
   listingsActiveCount: number;   // hard cap of 20
   mpcPurchasesCount: number;     // hard cap of 5
@@ -58,6 +61,7 @@ export interface UserPublic {
   email?: string;
   phoneE164?: string;
   cpf?: string;
+  sellerCep?: string;
   lgpdConsentAt?: string;
   ratingAvgAsSeller?: number;
   ratingCountAsSeller: number;
@@ -77,6 +81,7 @@ export function toPublic(u: UserRecord): UserPublic {
     email: u.email,
     phoneE164: u.phoneE164,
     cpf: u.cpf,
+    sellerCep: u.sellerCep,
     lgpdConsentAt: u.lgpdConsentAt,
     ratingAvgAsSeller: u.ratingAvgAsSeller,
     ratingCountAsSeller: u.ratingCountAsSeller,

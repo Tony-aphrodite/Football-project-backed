@@ -1,5 +1,12 @@
 export type DeliveryMethod = 'CORREIOS' | 'ENTREGA_EM_MAOS';
-export type OrderStatus = 'PENDING_PAYMENT' | 'PAID' | 'SHIPPED' | 'DELIVERED' | 'COMPLETED' | 'CANCELLED';
+export type PaymentMethod  = 'PIX' | 'CREDIT_CARD';
+export type OrderStatus =
+  | 'PENDING_PAYMENT'
+  | 'PAID'
+  | 'SHIPPED'
+  | 'DELIVERED'
+  | 'COMPLETED'
+  | 'CANCELLED';
 
 export interface OrderRecord {
   PK: string;          // ORDER#${orderId}
@@ -25,6 +32,20 @@ export interface OrderRecord {
   buyerCep?:   string;
   sellerCep?:  string;
   status:      OrderStatus;
+  // Payment fields (set when payment is initiated)
+  paymentMethod?:   PaymentMethod;
+  pagarmeOrderId?:  string;
+  pagarmeChargeId?: string;
+  pixQrCode?:       string;
+  pixQrCodeUrl?:    string;
+  pixExpiresAt?:    string;
+  escrowReleaseAt?: string;
+  correiosTracking?: string;
+  melhorEnvioOrderId?:   string;
+  shippingLabelUrl?:     string;
+  shippingTrackingCode?: string;
+  shippingCarrier?:      string;
+  shippingService?:      string;
   GSI1PK:      string;   // ORDER_BUYER#${buyerId}
   GSI1SK:      string;   // ${createdAt}#${orderId}
   GSI2PK:      string;   // ORDER_SELLER#${sellerId}
@@ -53,6 +74,18 @@ export interface OrderPublic {
   buyerCep?:      string;
   sellerCep?:     string;
   status:         OrderStatus;
+  paymentMethod?:   PaymentMethod;
+  pagarmeOrderId?:  string;
+  pixQrCode?:       string;
+  pixQrCodeUrl?:    string;
+  pixExpiresAt?:    string;
+  escrowReleaseAt?: string;
+  correiosTracking?: string;
+  melhorEnvioOrderId?:   string;
+  shippingLabelUrl?:     string;
+  shippingTrackingCode?: string;
+  shippingCarrier?:      string;
+  shippingService?:      string;
   createdAt:      string;
   updatedAt:      string;
 }
@@ -66,6 +99,19 @@ export function toOrderPublic(o: OrderRecord): OrderPublic {
     photoKeys: o.photoKeys, deliveryMethod: o.deliveryMethod,
     shippingCents: o.shippingCents, totalCents: o.totalCents,
     buyerCep: o.buyerCep, sellerCep: o.sellerCep,
-    status: o.status, createdAt: o.createdAt, updatedAt: o.updatedAt,
+    status: o.status,
+    paymentMethod:    o.paymentMethod,
+    pagarmeOrderId:   o.pagarmeOrderId,
+    pixQrCode:        o.pixQrCode,
+    pixQrCodeUrl:     o.pixQrCodeUrl,
+    pixExpiresAt:     o.pixExpiresAt,
+    escrowReleaseAt:       o.escrowReleaseAt,
+    correiosTracking:      o.correiosTracking,
+    melhorEnvioOrderId:    o.melhorEnvioOrderId,
+    shippingLabelUrl:      o.shippingLabelUrl,
+    shippingTrackingCode:  o.shippingTrackingCode,
+    shippingCarrier:       o.shippingCarrier,
+    shippingService:       o.shippingService,
+    createdAt: o.createdAt, updatedAt: o.updatedAt,
   };
 }

@@ -3,7 +3,7 @@ import { ulid } from 'ulid';
 
 import { DynamoDbService } from '../dynamodb/dynamodb.service';
 import { Keys } from '../dynamodb/keys';
-import type { UserRecord } from './entities/user.entity';
+import { toPublic, type UserRecord, type UserPublic } from './entities/user.entity';
 
 interface CreateUserInput {
   displayName: string;
@@ -198,6 +198,17 @@ export class UsersService {
         ':now': new Date().toISOString(),
       },
     });
+  }
+
+  async updateSellerCep(userId: string, cep: string): Promise<UserPublic> {
+    const u = await this.getById(userId);
+    const cleaned = cep.replace(/\D/g, '').slice(0, 8);
+    await this.db.update({
+      Key: { PK: u.PK, SK: u.SK },
+      UpdateExpression: 'SET sellerCep = :c, updatedAt = :now',
+      ExpressionAttributeValues: { ':c': cleaned, ':now': new Date().toISOString() },
+    });
+    return toPublic({ ...u, sellerCep: cleaned });
   }
 
   // ── private helpers ────────────────────────────────────────────────────────
