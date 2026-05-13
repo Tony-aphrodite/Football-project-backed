@@ -9,7 +9,8 @@ import {
   UseGuards,
 } from '@nestjs/common';
 
-import { OrdersService, type ShippingOption } from './orders.service';
+import { OrdersService } from './orders.service';
+import type { ShippingOption } from '../shipping/shipping.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { ShippingEstimateDto } from './dto/shipping-estimate.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
@@ -31,7 +32,7 @@ export class OrdersController {
   // Public — no auth required
   @Post('shipping-estimate')
   @HttpCode(200)
-  estimateShipping(@Body() dto: ShippingEstimateDto): ShippingOption[] {
+  estimateShipping(@Body() dto: ShippingEstimateDto): Promise<ShippingOption[]> {
     return this.orders.estimateShipping(dto);
   }
 

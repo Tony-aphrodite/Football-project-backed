@@ -42,7 +42,7 @@ export class AdminService {
   // ── Stats ──────────────────────────────────────────────────────────────────
 
   async getStats(): Promise<AdminStats> {
-    const [activeListings, pendingReports] = await Promise.all([
+    const [activeListings, pendingReports, totalUsers, totalOrders] = await Promise.all([
       this.db.queryCount({
         IndexName:                 'GSI1',
         KeyConditionExpression:    'GSI1PK = :pk',
@@ -53,14 +53,17 @@ export class AdminService {
         KeyConditionExpression:    'GSI1PK = :pk',
         ExpressionAttributeValues: { ':pk': Gsi.reportQueue('PENDING').GSI1PK },
       }),
+      this.db.scanCount({
+        FilterExpression:          'entityType = :t',
+        ExpressionAttributeValues: { ':t': 'User' },
+      }),
+      this.db.scanCount({
+        FilterExpression:          'entityType = :t',
+        ExpressionAttributeValues: { ':t': 'Order' },
+      }),
     ]);
 
-    return {
-      totalUsers:      0,   // needs counter table — not yet implemented
-      activeListings,
-      totalOrders:     0,   // needs counter table — not yet implemented
-      pendingReports,
-    };
+    return { totalUsers, activeListings, totalOrders, pendingReports };
   }
 
   // ── Users ──────────────────────────────────────────────────────────────────

@@ -11,12 +11,43 @@ import {
 } from './entities/listing.entity';
 import type { CreateListingDto } from './dto/create-listing.dto';
 import type { UpdatePriceDto } from './dto/update-price.dto';
+import { AlgoliaService, type ListingIndexRecord } from '../search/algolia.service';
 
 const LISTING_CAP = 20;
 
 @Injectable()
 export class ListingsService {
-  constructor(private readonly db: DynamoDbService) {}
+  constructor(
+    private readonly db: DynamoDbService,
+    private readonly algolia: AlgoliaService,
+  ) {}
+
+  private toIndexRecord(listing: ListingRecord): ListingIndexRecord {
+    return {
+      objectID:           listing.listingId,
+      listingId:          listing.listingId,
+      sellerId:           listing.sellerId,
+      sellerName:         listing.sellerName,
+      kind:               listing.kind,
+      teamName:           listing.teamName,
+      continent:          listing.continent,
+      country:            listing.country,
+      season:             listing.season,
+      supplier:           listing.supplier,
+      model:              listing.model,
+      garmentType:        listing.garmentType,
+      size:               listing.size,
+      condition:          listing.condition,
+      gender:             listing.gender,
+      priceCents:         listing.priceCents,
+      description:        listing.description,
+      photoKeys:          listing.photoKeys,
+      isMpc:              listing.isMpc,
+      status:             listing.status,
+      createdAt:          listing.createdAt,
+      createdAtTimestamp: Math.floor(new Date(listing.createdAt).getTime() / 1000),
+    };
+  }
 
   async create(sellerId: string, dto: CreateListingDto): Promise<{ listing: ListingPublic; listingsActiveCount: number }> {
     // Enforce cap atomically via conditional update on the user profile.
@@ -56,6 +87,7 @@ export class ListingsService {
       gender:                dto.gender,
       priceCents:            dto.priceCents,
       description:           dto.description,
+      weightGrams:           dto.weightGrams,
       photoKeys:             [],
       isMpc:                 false,
       nonVerifiedSupplierAck: dto.nonVerifiedSupplierAck,
@@ -92,6 +124,8 @@ export class ListingsService {
         },
       },
     ]);
+
+    void this.algolia.upsert(this.toIndexRecord(listing));
 
     return { listing: toListingPublic(listing), listingsActiveCount: newCount };
   }
@@ -144,7 +178,9 @@ export class ListingsService {
       ExpressionAttributeValues: { ':p': dto.priceCents, ':now': now },
     });
 
-    return toListingPublic({ ...record, priceCents: dto.priceCents, updatedAt: now });
+    const updated = { ...record, priceCents: dto.priceCents, updatedAt: now };
+    void this.algolia.upsert(this.toIndexRecord(updated));
+    return toListingPublic(updated);
   }
 
   async setMpc(listingId: string, isMpc: boolean): Promise<ListingPublic> {
@@ -158,7 +194,9 @@ export class ListingsService {
       UpdateExpression:          'SET isMpc = :v, updatedAt = :now',
       ExpressionAttributeValues: { ':v': isMpc, ':now': now },
     });
-    return toListingPublic({ ...record, isMpc, updatedAt: now });
+    const updated = { ...record, isMpc, updatedAt: now };
+    void this.algolia.upsert(this.toIndexRecord(updated));
+    return toListingPublic(updated);
   }
 
   async listBySeller(sellerId: string): Promise<ListingPublic[]> {
@@ -256,5 +294,14 @@ export class ListingsService {
         },
       },
     ]);
+
+    void this.algolia.remove(listingId);
+  }
+
+  async addPhotoKeyAndSync(sellerId: string, listingId: string, key: string): Promise<ListingPublic> {
+    const result = await this.addPhotoKey(sellerId, listingId, key);
+    const record = await this.getRecord(listingId);
+    if (record) void this.algolia.upsert(this.toIndexRecord(record));
+    return result;
   }
 }

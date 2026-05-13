@@ -33,6 +33,7 @@ export interface ListingRecord {
   gender:      ListingGender;
   priceCents:   number;
   description?: string;
+  weightGrams?: number;
   photoKeys:    string[];
   isMpc:        boolean;
   nonVerifiedSupplierAck: boolean;
@@ -62,6 +63,7 @@ export interface ListingPublic {
   gender:      ListingGender;
   priceCents:   number;
   description?: string;
+  weightGrams?: number;
   photoKeys:    string[];
   isMpc:        boolean;
   status:       ListingStatus;
@@ -86,6 +88,7 @@ export function toListingPublic(l: ListingRecord): ListingPublic {
     gender:      l.gender,
     priceCents:   l.priceCents,
     description:  l.description,
+    weightGrams:  l.weightGrams,
     photoKeys:    l.photoKeys,
     isMpc:       l.isMpc,
     status:      l.status,

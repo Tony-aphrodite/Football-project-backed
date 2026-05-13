@@ -12,16 +12,14 @@ import { OrderRecord, OrderPublic, toOrderPublic } from './entities/order.entity
 import type { ListingRecord } from '../listings/entities/listing.entity';
 import type { CreateOrderDto } from './dto/create-order.dto';
 import type { ShippingEstimateDto } from './dto/shipping-estimate.dto';
-
-export interface ShippingOption {
-  service: 'PAC' | 'SEDEX';
-  priceCents: number;
-  days: number;
-}
+import { ShippingService, type ShippingOption } from '../shipping/shipping.service';
 
 @Injectable()
 export class OrdersService {
-  constructor(private readonly db: DynamoDbService) {}
+  constructor(
+    private readonly db:       DynamoDbService,
+    private readonly shipping: ShippingService,
+  ) {}
 
   async create(buyerId: string, dto: CreateOrderDto): Promise<OrderPublic> {
     // Fetch buyer
@@ -185,35 +183,7 @@ export class OrdersService {
     });
   }
 
-  estimateShipping(dto: ShippingEstimateDto): ShippingOption[] {
-    const cep    = dto.toCep.replace(/\D/g, '');
-    const region = parseInt(cep.slice(0, 2), 10);
-
-    if (region >= 1 && region <= 28) {
-      // SP/RJ
-      return [
-        { service: 'PAC',   priceCents: 1800, days: 6 },
-        { service: 'SEDEX', priceCents: 3200, days: 2 },
-      ];
-    }
-    if (region >= 80 && region <= 99) {
-      // Sul
-      return [
-        { service: 'PAC',   priceCents: 2200, days: 7 },
-        { service: 'SEDEX', priceCents: 3800, days: 3 },
-      ];
-    }
-    if (region >= 40 && region <= 79) {
-      // Norte/Nordeste
-      return [
-        { service: 'PAC',   priceCents: 2800, days: 10 },
-        { service: 'SEDEX', priceCents: 5200, days: 4 },
-      ];
-    }
-    // Default
-    return [
-      { service: 'PAC',   priceCents: 2000, days: 7 },
-      { service: 'SEDEX', priceCents: 3500, days: 3 },
-    ];
+  async estimateShipping(dto: ShippingEstimateDto): Promise<ShippingOption[]> {
+    return this.shipping.estimate(dto.fromCep, dto.toCep, dto.weightGrams);
   }
 }

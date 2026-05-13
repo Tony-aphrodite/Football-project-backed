@@ -71,6 +71,13 @@ export class DynamoDbService {
     return (out.Items ?? []) as T[];
   }
 
+  async scanCount(input: Omit<ScanCommandInput, 'TableName' | 'Select'>): Promise<number> {
+    const out = await this.doc.send(
+      new ScanCommand({ ...input, TableName: this.tableName, Select: 'COUNT' }),
+    );
+    return out.Count ?? 0;
+  }
+
   async update(input: Omit<UpdateCommandInput, 'TableName'>): Promise<void> {
     await this.doc.send(
       new UpdateCommand({ ...input, TableName: this.tableName }),

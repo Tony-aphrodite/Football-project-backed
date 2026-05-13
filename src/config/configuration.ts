@@ -141,6 +141,40 @@ class EnvVars {
   @IsString()
   @IsOptional()
   R2_PUBLIC_URL?: string;
+
+  // ── Pagar.me ───────────────────────────────────────────────────────────────
+  @IsString()
+  @IsOptional()
+  PAGARME_API_KEY?: string;
+
+  @IsString()
+  @IsOptional()
+  PAGARME_WEBHOOK_SECRET?: string;
+
+  // ── Algolia ────────────────────────────────────────────────────────────────
+  @IsString()
+  @IsOptional()
+  ALGOLIA_APP_ID?: string;
+
+  @IsString()
+  @IsOptional()
+  ALGOLIA_ADMIN_API_KEY?: string;
+
+  @IsString()
+  @IsOptional()
+  ALGOLIA_SEARCH_API_KEY?: string;
+
+  @IsString()
+  @IsOptional()
+  ALGOLIA_INDEX_NAME?: string;
+
+  // ── Melhor Envio ────────────────────────────────────────────────────────────
+  @IsString()
+  @IsOptional()
+  MELHOR_ENVIO_TOKEN?: string;
+
+  @IsOptional()
+  MELHOR_ENVIO_SANDBOX: boolean = true;
 }
 
 export function validateEnv(raw: Record<string, unknown>): EnvVars {
@@ -203,6 +237,20 @@ export interface AppConfig {
     bucketName?: string;
     publicUrl?: string;
   };
+  pagarme: {
+    apiKey?: string;
+    webhookSecret?: string;
+  };
+  algolia: {
+    appId?: string;
+    adminApiKey?: string;
+    searchApiKey?: string;
+    indexName: string;
+  };
+  melhorEnvio: {
+    token?: string;
+    sandbox: boolean;
+  };
 }
 
 export default (): AppConfig => {
@@ -252,6 +300,20 @@ export default (): AppConfig => {
       secretAccessKey: env.R2_SECRET_ACCESS_KEY,
       bucketName:      env.R2_BUCKET_NAME,
       publicUrl:       env.R2_PUBLIC_URL || undefined,
+    },
+    pagarme: {
+      apiKey:        env.PAGARME_API_KEY,
+      webhookSecret: env.PAGARME_WEBHOOK_SECRET,
+    },
+    algolia: {
+      appId:        env.ALGOLIA_APP_ID,
+      adminApiKey:  env.ALGOLIA_ADMIN_API_KEY,
+      searchApiKey: env.ALGOLIA_SEARCH_API_KEY,
+      indexName:    env.ALGOLIA_INDEX_NAME ?? 'listings',
+    },
+    melhorEnvio: {
+      token:   env.MELHOR_ENVIO_TOKEN,
+      sandbox: env.MELHOR_ENVIO_SANDBOX !== 'false',
     },
   };
 };

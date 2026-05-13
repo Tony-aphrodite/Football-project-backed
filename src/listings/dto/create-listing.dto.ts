@@ -66,6 +66,11 @@ export class CreateListingDto {
   @MaxLength(500)
   description?: string;
 
+  @IsOptional()
+  @IsInt()
+  @Min(50)
+  weightGrams?: number;
+
   @IsBoolean()
   nonVerifiedSupplierAck!: boolean;
 }
