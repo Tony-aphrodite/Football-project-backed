@@ -168,6 +168,14 @@ class EnvVars {
   @IsOptional()
   ALGOLIA_INDEX_NAME?: string;
 
+  // ── Focus NFe ───────────────────────────────────────────────────────────────
+  @IsString()
+  @IsOptional()
+  FOCUS_NFE_TOKEN?: string;
+
+  @IsOptional()
+  FOCUS_NFE_SANDBOX: boolean = true;
+
   // ── Google Custom Search (SKU verification) ────────────────────────────────
   @IsString()
   @IsOptional()
@@ -264,6 +272,10 @@ export interface AppConfig {
     apiKey?: string;
     cx?: string;
   };
+  focusNfe: {
+    token?: string;
+    sandbox: boolean;
+  };
 }
 
 export default (): AppConfig => {
@@ -331,6 +343,10 @@ export default (): AppConfig => {
     googleSearch: {
       apiKey: env.GOOGLE_SEARCH_API_KEY,
       cx:     env.GOOGLE_SEARCH_CX,
+    },
+    focusNfe: {
+      token:   env.FOCUS_NFE_TOKEN,
+      sandbox: env.FOCUS_NFE_SANDBOX !== 'false',
     },
   };
 };

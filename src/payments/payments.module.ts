@@ -6,9 +6,10 @@ import { DynamoDbModule } from '../dynamodb/dynamodb.module';
 import { ShippingModule } from '../shipping/shipping.module';
 import { UsersModule } from '../users/users.module';
 import { DeveloperEarningsModule } from '../developer-earnings/developer-earnings.module';
+import { FiscalModule } from '../fiscal/fiscal.module';
 
 @Module({
-  imports:     [DynamoDbModule, ShippingModule, UsersModule, DeveloperEarningsModule],
+  imports:     [DynamoDbModule, ShippingModule, UsersModule, DeveloperEarningsModule, FiscalModule],
   controllers: [PaymentsController],
   providers:   [PaymentsService, PagarmeService],
   exports:     [PaymentsService],

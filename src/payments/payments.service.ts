@@ -13,6 +13,7 @@ import { PagarmeService } from './pagarme.service';
 import { ShippingService } from '../shipping/shipping.service';
 import { UsersService } from '../users/users.service';
 import { DeveloperEarningsService } from '../developer-earnings/developer-earnings.service';
+import { FiscalService } from '../fiscal/fiscal.service';
 
 export interface PixPaymentResult {
   orderId: string;
@@ -40,6 +41,7 @@ export class PaymentsService {
     private readonly shipping:  ShippingService,
     private readonly users:     UsersService,
     private readonly devEarnings: DeveloperEarningsService,
+    private readonly fiscal:      FiscalService,
   ) {}
 
   // ── Initiate PIX ─────────────────────────────────────────────────────────
@@ -213,7 +215,9 @@ export class PaymentsService {
 
     this.logger.log(`Order ${orderId} marked PAID, escrow releases at ${escrowReleaseAt}`);
 
-    // Trigger Melhor Envio label purchase asynchronously (Correios orders only)
+    // Async: fiscal invoices + shipping label (do not block payment confirmation)
+    void this.fiscal.emitCommissionNfse(order);
+    void this.fiscal.emitMpcNfe(order);
     if (order.deliveryMethod === 'CORREIOS' && order.buyerCep) {
       void this.purchaseLabelAsync(order);
     }
