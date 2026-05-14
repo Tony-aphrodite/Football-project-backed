@@ -1,4 +1,4 @@
-import { Injectable, InternalServerErrorException } from '@nestjs/common';
+import { Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { S3Client, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
@@ -12,15 +12,17 @@ const ALLOWED_CONTENT_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
 @Injectable()
 export class R2Service {
-  private readonly client: S3Client;
-  private readonly bucket: string;
+  private readonly logger = new Logger(R2Service.name);
+  private readonly client: S3Client | null = null;
+  private readonly bucket: string = '';
   private readonly publicUrl: string | undefined;
 
   constructor(private readonly config: ConfigService<AppConfig, true>) {
     const r2 = this.config.get('r2', { infer: true });
 
     if (!r2.accountId || !r2.accessKeyId || !r2.secretAccessKey || !r2.bucketName) {
-      throw new InternalServerErrorException('R2 credentials not configured');
+      this.logger.warn('R2 credentials not configured — photo upload disabled');
+      return;
     }
 
     this.bucket    = r2.bucketName;
@@ -41,6 +43,9 @@ export class R2Service {
     contentType: string,
     existingCount: number,
   ): Promise<{ uploadUrl: string; key: string }> {
+    if (!this.client) {
+      throw new InternalServerErrorException('Photo upload not available — R2 not configured');
+    }
     if (!ALLOWED_CONTENT_TYPES.includes(contentType)) {
       throw new InternalServerErrorException('Unsupported content type');
     }
@@ -62,6 +67,7 @@ export class R2Service {
   }
 
   async deleteObject(key: string): Promise<void> {
+    if (!this.client) return;
     await this.client.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: key }));
   }
 

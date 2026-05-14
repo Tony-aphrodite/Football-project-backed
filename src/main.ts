@@ -7,7 +7,10 @@ import { AppConfig } from './config/configuration';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+  const app = await NestFactory.create(AppModule, {
+    bufferLogs: true,
+    rawBody: true,  // needed for Pagar.me webhook signature validation
+  });
   const config = app.get(ConfigService<AppConfig, true>);
 
   app.use(helmet());
