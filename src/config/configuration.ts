@@ -168,6 +168,15 @@ class EnvVars {
   @IsOptional()
   ALGOLIA_INDEX_NAME?: string;
 
+  // ── Google Custom Search (SKU verification) ────────────────────────────────
+  @IsString()
+  @IsOptional()
+  GOOGLE_SEARCH_API_KEY?: string;
+
+  @IsString()
+  @IsOptional()
+  GOOGLE_SEARCH_CX?: string;
+
   // ── Melhor Envio ────────────────────────────────────────────────────────────
   @IsString()
   @IsOptional()
@@ -251,6 +260,10 @@ export interface AppConfig {
     token?: string;
     sandbox: boolean;
   };
+  googleSearch: {
+    apiKey?: string;
+    cx?: string;
+  };
 }
 
 export default (): AppConfig => {
@@ -314,6 +327,10 @@ export default (): AppConfig => {
     melhorEnvio: {
       token:   env.MELHOR_ENVIO_TOKEN,
       sandbox: env.MELHOR_ENVIO_SANDBOX !== 'false',
+    },
+    googleSearch: {
+      apiKey: env.GOOGLE_SEARCH_API_KEY,
+      cx:     env.GOOGLE_SEARCH_CX,
     },
   };
 };

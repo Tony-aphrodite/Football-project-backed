@@ -4,6 +4,7 @@ import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
 
 import { DynamoDbService } from './dynamodb.service';
+import { DynamoDbBootstrapService } from './dynamodb-bootstrap.service';
 import { DYNAMO_DOC_CLIENT } from './tokens';
 import type { AppConfig } from '../config/configuration';
 
@@ -36,6 +37,7 @@ import type { AppConfig } from '../config/configuration';
       },
     },
     DynamoDbService,
+    DynamoDbBootstrapService,
   ],
   exports: [DYNAMO_DOC_CLIENT, DynamoDbService],
 })
