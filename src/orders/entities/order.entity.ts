@@ -29,9 +29,12 @@ export interface OrderRecord {
   deliveryMethod: DeliveryMethod;
   shippingCents:  number;
   totalCents:     number;
-  buyerCep?:   string;
-  sellerCep?:  string;
-  status:      OrderStatus;
+  buyerCep?:     string;
+  sellerCep?:    string;
+  couponCode?:   string;
+  discountPct?:  number;
+  discountCents?: number;
+  status:        OrderStatus;
   // Payment fields (set when payment is initiated)
   paymentMethod?:   PaymentMethod;
   pagarmeOrderId?:  string;
@@ -76,6 +79,9 @@ export interface OrderPublic {
   totalCents:     number;
   buyerCep?:      string;
   sellerCep?:     string;
+  couponCode?:    string;
+  discountPct?:   number;
+  discountCents?: number;
   status:         OrderStatus;
   paymentMethod?:   PaymentMethod;
   pagarmeOrderId?:  string;
@@ -105,6 +111,7 @@ export function toOrderPublic(o: OrderRecord): OrderPublic {
     photoKeys: o.photoKeys, deliveryMethod: o.deliveryMethod,
     shippingCents: o.shippingCents, totalCents: o.totalCents,
     buyerCep: o.buyerCep, sellerCep: o.sellerCep,
+    couponCode: o.couponCode, discountPct: o.discountPct, discountCents: o.discountCents,
     status: o.status,
     paymentMethod:    o.paymentMethod,
     pagarmeOrderId:   o.pagarmeOrderId,

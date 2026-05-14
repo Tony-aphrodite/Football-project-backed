@@ -5,4 +5,5 @@ export class CreateOrderDto {
   @IsString() @IsNotEmpty() listingId!: string;
   @IsEnum(['CORREIOS', 'ENTREGA_EM_MAOS']) deliveryMethod!: DeliveryMethod;
   @IsString() @IsOptional() buyerCep?: string;
+  @IsString() @IsOptional() couponCode?: string;
 }

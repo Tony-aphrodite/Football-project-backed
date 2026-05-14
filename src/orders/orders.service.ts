@@ -10,6 +10,7 @@ import { DynamoDbService } from '../dynamodb/dynamodb.service';
 import { Keys, Gsi } from '../dynamodb/keys';
 import { OrderRecord, OrderPublic, toOrderPublic } from './entities/order.entity';
 import type { ListingRecord } from '../listings/entities/listing.entity';
+import type { CouponRecord } from '../coupons/entities/coupon.entity';
 import type { CreateOrderDto } from './dto/create-order.dto';
 import type { ShippingEstimateDto } from './dto/shipping-estimate.dto';
 import { ShippingService, type ShippingOption } from '../shipping/shipping.service';
@@ -49,7 +50,29 @@ export class OrdersService {
         : (parseInt(cepDigits.slice(0, 2), 10) > 50 ? 2200 : 3000);
     }
 
-    const totalCents = listing.priceCents + shippingCents;
+    // Apply coupon discount if provided
+    let discountPct   = 0;
+    let discountCents = 0;
+    let couponCode: string | undefined;
+
+    if (dto.couponCode) {
+      const code = dto.couponCode.trim().toUpperCase();
+      const ck   = Keys.coupon(code);
+      const coupon = await this.db.get<CouponRecord>(ck.PK, ck.SK);
+
+      if (!coupon || !coupon.active) throw new BadRequestException('Cupom inválido ou expirado');
+      if (coupon.redemptionCount >= coupon.maxRedemptions) throw new BadRequestException('Cupom esgotado');
+
+      const rk = Keys.couponRedemption(code, buyerId);
+      const existing = await this.db.get(rk.PK, rk.SK);
+      if (existing) throw new BadRequestException('Você já utilizou este cupom');
+
+      discountPct   = coupon.discountPct;
+      discountCents = Math.round(listing.priceCents * (discountPct / 100));
+      couponCode    = code;
+    }
+
+    const totalCents = listing.priceCents + shippingCents - discountCents;
     const now        = new Date().toISOString();
     const orderId    = ulid();
     const orderKey   = Keys.order(orderId) as { PK: string; SK: 'METADATA' };
@@ -75,6 +98,9 @@ export class OrdersService {
       totalCents,
       buyerCep:       dto.buyerCep,
       sellerCep,
+      couponCode,
+      discountPct:    discountPct || undefined,
+      discountCents:  discountCents || undefined,
       status:         'PENDING_PAYMENT',
       GSI1PK:         Gsi.ordersAsBuyer(buyerId).GSI1PK,
       GSI1SK:         `${now}#${orderId}`,
@@ -118,6 +144,29 @@ export class OrdersService {
           ExpressionAttributeValues: { ':one': 1, ':zero': 0, ':now': now },
         },
       },
+      // Record coupon redemption if coupon was used
+      ...(couponCode ? (() => {
+        const ck = Keys.coupon(couponCode);
+        const rk = Keys.couponRedemption(couponCode, buyerId);
+        return [
+          {
+            Put: {
+              TableName: this.db.tableName,
+              Item: { ...rk, entityType: 'CouponRedemption', code: couponCode, userId: buyerId, discountPct, redeemedAt: now },
+              ConditionExpression: 'attribute_not_exists(PK)',
+            },
+          },
+          {
+            Update: {
+              TableName:                 this.db.tableName,
+              Key:                       { PK: ck.PK, SK: ck.SK },
+              UpdateExpression:          'SET redemptionCount = redemptionCount + :one',
+              ConditionExpression:       'redemptionCount < maxRedemptions',
+              ExpressionAttributeValues: { ':one': 1 },
+            },
+          },
+        ];
+      })() : []),
     ]);
 
     return toOrderPublic(order);
