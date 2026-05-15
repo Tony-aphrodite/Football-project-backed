@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, Patch, Post, UseGuards, UsePipes, ValidationPipe } from '@nestjs/common';
 
 import { AdminGuard } from '../common/guards/admin.guard';
 import { AdminService, type AdminStats, type CreateCouponDto } from './admin.service';
@@ -6,8 +6,8 @@ import type { ReportWithComment } from './entities/report.entity';
 import type { UserPublic } from '../users/entities/user.entity';
 import type { ListingPublic } from '../listings/entities/listing.entity';
 import type { OrderPublic } from '../orders/entities/order.entity';
-import type { CreateListingDto } from '../listings/dto/create-listing.dto';
-import type { CreateQuizDto } from '../quiz/dto/create-quiz.dto';
+import { CreateListingDto } from '../listings/dto/create-listing.dto';
+import { CreateQuizDto } from '../quiz/dto/create-quiz.dto';
 
 @Controller('admin')
 @UseGuards(AdminGuard)
@@ -100,6 +100,7 @@ export class AdminController {
   // ── MPC ────────────────────────────────────────────────────────────────────
 
   @Post('mpc')
+  @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
   createMpc(@Body() dto: CreateListingDto) {
     return this.admin.createMpcListing(dto);
   }
@@ -112,6 +113,7 @@ export class AdminController {
   // ── Quiz ───────────────────────────────────────────────────────────────────
 
   @Post('quiz')
+  @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
   createQuiz(@Body() dto: CreateQuizDto) {
     return this.admin.createQuiz(dto);
   }

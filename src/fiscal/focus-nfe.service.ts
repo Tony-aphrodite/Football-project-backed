@@ -82,7 +82,7 @@ export interface FocusNfeResponse {
 const AVANCE_LABS = {
   cnpj:               '65543815000162',
   nome:               'Avance Labs Intermediacao e Promocao de Vendas LTDA',
-  inscricao_municipal: '',
+  inscricao_municipal: '02201747', // CCM 0.220.174-7 São Paulo
   codigo_municipio:   '3550308', // São Paulo
   logradouro:         'Rua da Arena',
   numero:             '1',
