@@ -61,23 +61,26 @@ export class PaymentsService {
       );
     }
 
-    // Fetch buyer CPF — required by Pagar.me
+    // Fetch buyer data — required by Pagar.me
     const buyerKey = Keys.user(buyerId);
-    const buyer = await this.db.get<{ cpf?: string; displayName: string }>(
+    const buyer = await this.db.get<{ cpf?: string; displayName: string; phoneE164?: string; email?: string }>(
       buyerKey.PK,
       buyerKey.SK,
     );
     if (!buyer) throw new NotFoundException('Buyer profile not found');
 
-    const cpf = buyer.cpf ?? '00000000000';
+    const cpf   = buyer.cpf ?? '00000000000';
+    const phone = buyer.phoneE164 ?? '+5511999999999';
 
     const pagarmeOrder = await this.pagarme.createPixOrder({
-      externalCode: `ARENA-${orderId}`,
-      amountCents: order.totalCents,
-      customerName: buyer.displayName,
-      customerCpf: cpf,
+      externalCode:    `ARENA-${orderId}`,
+      amountCents:     order.totalCents,
+      customerName:    buyer.displayName,
+      customerCpf:     cpf,
+      customerPhone:   phone,
+      customerEmail:   buyer.email,
       itemDescription: `Camisa ${order.teamName} — ${order.supplier} ${order.season}`,
-      expiresInSeconds: 86_400, // 24 h
+      expiresInSeconds: 86_400,
     });
 
     const charge = pagarmeOrder.charges?.[0];

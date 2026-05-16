@@ -31,6 +31,8 @@ export interface CreatePixOrderParams {
   amountCents: number;
   customerName: string;
   customerCpf: string;
+  customerPhone?: string;
+  customerEmail?: string;
   itemDescription: string;
   expiresInSeconds?: number;
 }
@@ -76,13 +78,25 @@ export class PagarmeService {
   async createPixOrder(params: CreatePixOrderParams): Promise<PagarmeOrder> {
     const cpfDigits = params.customerCpf.replace(/\D/g, '');
 
+    const phoneDigits = (params.customerPhone ?? '+5511999999999').replace(/\D/g, '');
+    const areaCode    = phoneDigits.slice(2, 4);
+    const number      = phoneDigits.slice(4);
+
     return this.request<PagarmeOrder>('POST', '/orders', {
       code: params.externalCode,
       customer: {
-        name: params.customerName,
-        type: 'individual',
-        document: cpfDigits,
+        name:          params.customerName,
+        type:          'individual',
+        document:      cpfDigits,
         document_type: 'CPF',
+        email:         params.customerEmail ?? `${cpfDigits}@arenadosmantos.app`,
+        phones: {
+          mobile_phone: {
+            country_code: '55',
+            area_code:    areaCode || '11',
+            number:       number || '999999999',
+          },
+        },
       },
       items: [
         {
