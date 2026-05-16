@@ -94,7 +94,7 @@ export class AlgoliaService implements OnModuleInit {
         indexName: this.indexName,
         searchParams: {
           query,
-          filters: filters ?? 'status:ACTIVE',
+          filters: filters || undefined,
           page,
           hitsPerPage,
           attributesToRetrieve: [
