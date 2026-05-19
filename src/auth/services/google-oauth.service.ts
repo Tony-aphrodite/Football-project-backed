@@ -38,6 +38,8 @@ export class GoogleOAuthService {
       g.clientIdAndroid,
       g.clientIdIos,
       g.clientIdWeb,
+      // Firebase Android client (arena-dos-mantos-495611 project)
+      '265836821890-kvvbh3o5nbv4uurcum4lurn0gp79c4t4.apps.googleusercontent.com',
     ].filter((id): id is string => Boolean(id));
 
     if (audience.length === 0) {
