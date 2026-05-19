@@ -151,6 +151,10 @@ class EnvVars {
   @IsOptional()
   PAGARME_WEBHOOK_SECRET?: string;
 
+  @IsString()
+  @IsOptional()
+  PAGARME_ARENA_RECIPIENT_ID?: string;
+
   // ── Algolia ────────────────────────────────────────────────────────────────
   @IsString()
   @IsOptional()
@@ -257,6 +261,7 @@ export interface AppConfig {
   pagarme: {
     apiKey?: string;
     webhookSecret?: string;
+    arenaRecipientId?: string;
   };
   algolia: {
     appId?: string;
@@ -327,8 +332,9 @@ export default (): AppConfig => {
       publicUrl:       env.R2_PUBLIC_URL || undefined,
     },
     pagarme: {
-      apiKey:        env.PAGARME_API_KEY,
-      webhookSecret: env.PAGARME_WEBHOOK_SECRET,
+      apiKey:             env.PAGARME_API_KEY,
+      webhookSecret:      env.PAGARME_WEBHOOK_SECRET,
+      arenaRecipientId:   env.PAGARME_ARENA_RECIPIENT_ID,
     },
     algolia: {
       appId:        env.ALGOLIA_APP_ID,

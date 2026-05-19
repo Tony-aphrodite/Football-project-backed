@@ -40,6 +40,8 @@ export interface UserRecord {
 
   // Seller shipping origin ZIP code (for Melhor Envio quoting)
   sellerCep?: string;
+  // Pagar.me recipient ID for payment split
+  pagarmeRecipientId?: string;
 
   // Soft caps enforced server-side.
   listingsActiveCount: number;   // hard cap of 20
@@ -62,6 +64,7 @@ export interface UserPublic {
   phoneE164?: string;
   cpf?: string;
   sellerCep?: string;
+  pagarmeRecipientId?: string;
   lgpdConsentAt?: string;
   ratingAvgAsSeller?: number;
   ratingCountAsSeller: number;
@@ -81,8 +84,9 @@ export function toPublic(u: UserRecord): UserPublic {
     email: u.email,
     phoneE164: u.phoneE164,
     cpf: u.cpf,
-    sellerCep: u.sellerCep,
-    lgpdConsentAt: u.lgpdConsentAt,
+    sellerCep:          u.sellerCep,
+    pagarmeRecipientId: u.pagarmeRecipientId,
+    lgpdConsentAt:      u.lgpdConsentAt,
     ratingAvgAsSeller: u.ratingAvgAsSeller,
     ratingCountAsSeller: u.ratingCountAsSeller,
     ratingAvgAsBuyer: u.ratingAvgAsBuyer,

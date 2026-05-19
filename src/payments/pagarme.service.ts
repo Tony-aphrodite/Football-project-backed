@@ -35,6 +35,10 @@ export interface CreatePixOrderParams {
   customerEmail?: string;
   itemDescription: string;
   expiresInSeconds?: number;
+  // Split payment recipients
+  arenaRecipientId?: string;   // Arena dos Mantos recipient ID
+  sellerRecipientId?: string;  // Seller's Pagar.me recipient ID
+  commissionPct?: number;      // Arena commission % (default 7)
 }
 
 // ── Service ──────────────────────────────────────────────────────────────────
@@ -113,8 +117,92 @@ export class PagarmeService {
             expires_in: params.expiresInSeconds ?? 86_400,
           },
           amount: params.amountCents,
+          // Include split if both recipient IDs are available
+          ...(params.arenaRecipientId && params.sellerRecipientId ? {
+            split: this.buildSplit(
+              params.amountCents,
+              params.arenaRecipientId,
+              params.sellerRecipientId,
+              params.commissionPct ?? 7,
+            ),
+          } : {}),
         },
       ],
+    });
+  }
+
+  /** Build split rules: Arena gets commission %, seller gets remainder.
+   *  Pagar.me processing fee (4%) is charged to Arena's share. */
+  private buildSplit(
+    amountCents:       number,
+    arenaRecipientId:  string,
+    sellerRecipientId: string,
+    commissionPct:     number,
+  ) {
+    const arenaAmount  = Math.round(amountCents * (commissionPct / 100));
+    const sellerAmount = amountCents - arenaAmount;
+
+    return [
+      {
+        recipient_id: arenaRecipientId,
+        amount: arenaAmount,
+        type: 'flat',
+        options: {
+          charge_processing_fee: true,  // Pagar.me fee comes from Arena's share
+          liable:                true,
+          charge_remainder_fee:  true,
+        },
+      },
+      {
+        recipient_id: sellerRecipientId,
+        amount: sellerAmount,
+        type: 'flat',
+        options: {
+          charge_processing_fee: false,
+          liable:                false,
+          charge_remainder_fee:  false,
+        },
+      },
+    ];
+  }
+
+  /** Creates a Pagar.me recipient (seller bank account). */
+  async createRecipient(params: {
+    name: string;
+    cpf: string;
+    email: string;
+    pixKey: string;
+    pixKeyType: 'cpf' | 'email' | 'phone' | 'random';
+  }): Promise<{ id: string; status: string }> {
+    return this.request('POST', '/recipients', {
+      name: params.name,
+      email: params.email,
+      description: `Vendedor Arena dos Mantos — ${params.name}`,
+      document: params.cpf.replace(/\D/g, ''),
+      document_type: 'CPF',
+      type: 'individual',
+      default_bank_account: {
+        holder_name: params.name,
+        holder_type: 'individual',
+        holder_document: params.cpf.replace(/\D/g, ''),
+        bank: '000',
+        branch_number: '0001',
+        branch_check_digit: '0',
+        account_number: '00000000',
+        account_check_digit: '0',
+        type: 'checking',
+      },
+      transfer_settings: {
+        transfer_enabled: true,
+        transfer_interval: 'monthly',
+        transfer_day: 5,
+      },
+      automatic_anticipation_settings: {
+        enabled: false,
+        type: 'full',
+        volume_percentage: '0',
+        delay: null,
+      },
     });
   }
 

@@ -6,6 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 
+import { ConfigService } from '@nestjs/config';
 import { DynamoDbService } from '../dynamodb/dynamodb.service';
 import { Keys } from '../dynamodb/keys';
 import { OrderRecord } from '../orders/entities/order.entity';
@@ -14,6 +15,7 @@ import { ShippingService } from '../shipping/shipping.service';
 import { UsersService } from '../users/users.service';
 import { DeveloperEarningsService } from '../developer-earnings/developer-earnings.service';
 import { FiscalService } from '../fiscal/fiscal.service';
+import type { AppConfig } from '../config/configuration';
 
 export interface PixPaymentResult {
   orderId: string;
@@ -36,12 +38,13 @@ export class PaymentsService {
   private readonly logger = new Logger(PaymentsService.name);
 
   constructor(
-    private readonly db:        DynamoDbService,
-    private readonly pagarme:   PagarmeService,
-    private readonly shipping:  ShippingService,
-    private readonly users:     UsersService,
+    private readonly db:          DynamoDbService,
+    private readonly pagarme:     PagarmeService,
+    private readonly shipping:    ShippingService,
+    private readonly users:       UsersService,
     private readonly devEarnings: DeveloperEarningsService,
     private readonly fiscal:      FiscalService,
+    private readonly config:      ConfigService<AppConfig, true>,
   ) {}
 
   // ── Initiate PIX ─────────────────────────────────────────────────────────
@@ -72,15 +75,25 @@ export class PaymentsService {
     const cpf   = buyer.cpf ?? '00000000000';
     const phone = buyer.phoneE164 ?? '+5511999999999';
 
+    // Load seller for recipient ID (split payment)
+    const sellerKey = Keys.user(order.sellerId);
+    const seller    = await this.db.get<{ pagarmeRecipientId?: string }>(sellerKey.PK, sellerKey.SK);
+    const arenaRecipientId  = this.config.get('pagarme.arenaRecipientId', { infer: true });
+    const sellerRecipientId = seller?.pagarmeRecipientId;
+
     const pagarmeOrder = await this.pagarme.createPixOrder({
-      externalCode:    `ARENA-${orderId}`,
-      amountCents:     order.totalCents,
-      customerName:    buyer.displayName,
-      customerCpf:     cpf,
-      customerPhone:   phone,
-      customerEmail:   buyer.email,
-      itemDescription: `Camisa ${order.teamName} — ${order.supplier} ${order.season}`,
+      externalCode:     `ARENA-${orderId}`,
+      amountCents:      order.totalCents,
+      customerName:     buyer.displayName,
+      customerCpf:      cpf,
+      customerPhone:    phone,
+      customerEmail:    buyer.email,
+      itemDescription:  `Camisa ${order.teamName} — ${order.supplier} ${order.season}`,
       expiresInSeconds: 86_400,
+      // Include split only when both recipient IDs are configured
+      arenaRecipientId,
+      sellerRecipientId,
+      commissionPct: 7,
     });
 
     const charge = pagarmeOrder.charges?.[0];

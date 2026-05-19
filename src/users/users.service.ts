@@ -200,6 +200,21 @@ export class UsersService {
     });
   }
 
+  async getRecipientId(userId: string): Promise<{ pagarmeRecipientId?: string }> {
+    const u = await this.getById(userId);
+    return { pagarmeRecipientId: u.pagarmeRecipientId };
+  }
+
+  async setRecipientId(userId: string, recipientId: string): Promise<UserPublic> {
+    const u = await this.getById(userId);
+    await this.db.update({
+      Key:                       { PK: u.PK, SK: u.SK },
+      UpdateExpression:          'SET pagarmeRecipientId = :r, updatedAt = :now',
+      ExpressionAttributeValues: { ':r': recipientId, ':now': new Date().toISOString() },
+    });
+    return toPublic({ ...u, pagarmeRecipientId: recipientId });
+  }
+
   async updateSellerCep(userId: string, cep: string): Promise<UserPublic> {
     const u = await this.getById(userId);
     const cleaned = cep.replace(/\D/g, '').slice(0, 8);
