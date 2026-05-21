@@ -84,21 +84,21 @@ const AVANCE_LABS = {
   nome:               'Avance Labs Intermediacao e Promocao de Vendas LTDA',
   inscricao_municipal: '02201747', // CCM 0.220.174-7 São Paulo
   codigo_municipio:   '3550308', // São Paulo
-  logradouro:         'Rua da Arena',
-  numero:             '1',
-  bairro:             'Centro',
+  logradouro:         'AL SEGUNDO-SARGENTO ANANIAS HOLANDA DE OLIVEIRA',
+  numero:             '41',
+  bairro:             'Parque Novo Mundo',
   municipio:          'São Paulo',
   uf:                 'SP',
-  cep:                '01310100',
+  cep:                '02186070',
   inscricao_estadual: 'ISENTO',
-  regime_tributario:  1, // Simples Nacional
+  regime_tributario:  1, // Simples Nacional / MEI
 };
 
 // Jersey NCM code and service codes
 const JERSEY_NCM  = '61051000';  // Men's shirts, knit
 const JERSEY_CFOP = '6102';      // Sales outside state
-const ISS_RATE    = 2;           // 2% ISS on commissions
-const ISS_SERVICE_CODE = '07169'; // Sales promotion service code (São Paulo)
+const ISS_RATE    = 5;           // 5% ISS (código 2496, São Paulo MEI)
+const ISS_SERVICE_CODE = '02496'; // ISS código 2496 confirmed on CCM document
 const ISS_LIST_CODE    = '01.07'; // Service list item
 
 @Injectable()
