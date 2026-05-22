@@ -15,7 +15,7 @@ import type { UserRecord } from '../../users/entities/user.entity';
 export class TotpService {
   constructor(private readonly db: DynamoDbService) {}
 
-  async setup(userId: string): Promise<{ qrCodeDataUrl: string }> {
+  async setup(userId: string): Promise<{ qrCodeDataUrl: string; secret: string }> {
     const k    = Keys.user(userId);
     const user = await this.db.get<UserRecord>(k.PK, k.SK);
     if (!user) throw new NotFoundException('User not found');
@@ -32,7 +32,7 @@ export class TotpService {
       ExpressionAttributeValues: { ':s': secret, ':now': new Date().toISOString() },
     });
 
-    return { qrCodeDataUrl };
+    return { qrCodeDataUrl, secret };
   }
 
   async activate(userId: string, code: string): Promise<void> {
