@@ -1,5 +1,6 @@
 import { BadRequestException, Body, Controller, Delete, Get, HttpCode, NotFoundException, Param, Patch, Post, UseGuards, Query } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
+import { ConfigService } from '@nestjs/config';
 
 import { ListingsService } from './listings.service';
 import { CreateListingDto } from './dto/create-listing.dto';
@@ -10,18 +11,61 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { R2Service } from '../r2/r2.service';
 import type { JwtPayload } from '../auth/types/jwt-payload.type';
 import type { ListingPublic } from './entities/listing.entity';
+import type { AppConfig } from '../config/configuration';
+
+interface GoogleImageResult {
+  link:        string;
+  title:       string;
+  image?:      { thumbnailLink?: string };
+}
 
 @Controller('listings')
 export class ListingsController {
   constructor(
     private readonly listings: ListingsService,
     private readonly r2: R2Service,
+    private readonly config: ConfigService<AppConfig, true>,
   ) {}
 
   // public — no auth required
   @Get('feed')
   feed(@Query('limit') limit?: string): Promise<ListingPublic[]> {
     return this.listings.feed(limit ? Math.min(Number(limit), 100) : 40);
+  }
+
+  /** Search jersey images via Google Custom Search (supplier + SKU code). */
+  @Get('jersey-image')
+  @UseGuards(JwtAuthGuard)
+  async jerseyImage(
+    @Query('supplier') supplier: string,
+    @Query('sku') sku: string,
+  ): Promise<{ images: { url: string; thumbnail: string; title: string }[] }> {
+    const apiKey = this.config.get('googleSearch.apiKey', { infer: true });
+    const cx     = this.config.get('googleSearch.cx',    { infer: true });
+
+    if (!apiKey || !cx) {
+      return { images: [] };
+    }
+    if (!supplier || !sku) {
+      throw new BadRequestException('supplier and sku are required');
+    }
+
+    const query = encodeURIComponent(`${supplier} ${sku} camisa futebol jersey`);
+    const url   = `https://www.googleapis.com/customsearch/v1?key=${apiKey}&cx=${cx}&q=${query}&searchType=image&num=5&imgSize=large`;
+
+    try {
+      const res  = await fetch(url);
+      if (!res.ok) return { images: [] };
+      const data = await res.json() as { items?: GoogleImageResult[] };
+      const images = (data.items ?? []).map((item) => ({
+        url:       item.link,
+        thumbnail: item.image?.thumbnailLink ?? item.link,
+        title:     item.title,
+      }));
+      return { images };
+    } catch {
+      return { images: [] };
+    }
   }
 
   @Post()

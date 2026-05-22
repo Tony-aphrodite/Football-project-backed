@@ -71,6 +71,10 @@ export class CreateListingDto {
   @Min(50)
   weightGrams?: number;
 
+  @IsOptional()
+  @IsString()
+  sku?: string;
+
   @IsBoolean()
   nonVerifiedSupplierAck!: boolean;
 }

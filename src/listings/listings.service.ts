@@ -88,6 +88,7 @@ export class ListingsService {
       priceCents:            dto.priceCents,
       description:           dto.description,
       weightGrams:           dto.weightGrams,
+      sku:                   dto.sku,
       photoKeys:             [],
       isMpc:                 false,
       nonVerifiedSupplierAck: dto.nonVerifiedSupplierAck,
