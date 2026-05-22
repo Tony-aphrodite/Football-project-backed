@@ -42,6 +42,10 @@ export interface OrderRecord {
   pixQrCode?:       string;
   pixQrCodeUrl?:    string;
   pixExpiresAt?:    string;
+  // Credit card payment fields
+  cardChargeId?:  string;
+  cardLast4?:     string;
+  installments?:  number;
   escrowReleaseAt?: string;
   correiosTracking?: string;
   melhorEnvioOrderId?:      string;
@@ -88,6 +92,10 @@ export interface OrderPublic {
   pixQrCode?:       string;
   pixQrCodeUrl?:    string;
   pixExpiresAt?:    string;
+  // Credit card payment fields
+  cardChargeId?:  string;
+  cardLast4?:     string;
+  installments?:  number;
   escrowReleaseAt?: string;
   correiosTracking?: string;
   melhorEnvioOrderId?:      string;
@@ -118,6 +126,9 @@ export function toOrderPublic(o: OrderRecord): OrderPublic {
     pixQrCode:        o.pixQrCode,
     pixQrCodeUrl:     o.pixQrCodeUrl,
     pixExpiresAt:     o.pixExpiresAt,
+    cardChargeId:     o.cardChargeId,
+    cardLast4:        o.cardLast4,
+    installments:     o.installments,
     escrowReleaseAt:       o.escrowReleaseAt,
     correiosTracking:      o.correiosTracking,
     melhorEnvioOrderId:       o.melhorEnvioOrderId,

@@ -33,6 +33,12 @@ export interface PaymentStatusResult {
   pagarmeStatus: string | null;
 }
 
+export interface CardPaymentResult {
+  status:  'authorized' | 'refused' | 'pending';
+  orderId: string;
+  chargeId: string;
+}
+
 @Injectable()
 export class PaymentsService {
   private readonly logger = new Logger(PaymentsService.name);
@@ -137,6 +143,144 @@ export class PaymentsService {
       pixQrCodeUrl: tx.qr_code_url ?? '',
       pixExpiresAt,
       totalCents: order.totalCents,
+    };
+  }
+
+  // ── Initiate Credit Card ──────────────────────────────────────────────────
+
+  async initiateCardPayment(
+    buyerId: string,
+    dto: {
+      orderId:       string;
+      installments:  number;
+      cardNumber:    string;
+      cardHolderName: string;
+      cardExpMonth:  number;
+      cardExpYear:   number;
+      cardCvv:       string;
+    },
+  ): Promise<CardPaymentResult> {
+    const orderKey = Keys.order(dto.orderId);
+    const order = await this.db.get<OrderRecord>(orderKey.PK, orderKey.SK);
+    if (!order) throw new NotFoundException('Order not found');
+    if (order.buyerId !== buyerId) throw new ForbiddenException('Not your order');
+
+    if (order.status !== 'PENDING_PAYMENT') {
+      throw new BadRequestException(
+        `Order cannot be paid in status ${order.status}`,
+      );
+    }
+
+    // Fetch buyer data — required by Pagar.me
+    const buyerKey = Keys.user(buyerId);
+    const buyer = await this.db.get<{ cpf?: string; displayName: string; phoneE164?: string; email?: string }>(
+      buyerKey.PK,
+      buyerKey.SK,
+    );
+    if (!buyer) throw new NotFoundException('Buyer profile not found');
+
+    const cpf   = buyer.cpf ?? '00000000000';
+    const phone = buyer.phoneE164 ?? '+5511999999999';
+
+    // Fetch listing for item description
+    const listingKey = Keys.listing(order.listingId);
+    const listing = await this.db.get<{ description?: string }>(listingKey.PK, listingKey.SK);
+    const itemDescription = listing?.description
+      ?? `Camisa ${order.teamName} — ${order.supplier} ${order.season}`;
+
+    // Load seller for split payment
+    const sellerKey = Keys.user(order.sellerId);
+    const seller    = await this.db.get<{ pagarmeRecipientId?: string }>(sellerKey.PK, sellerKey.SK);
+    const arenaRecipientId  = this.config.get('pagarme.arenaRecipientId', { infer: true });
+    const sellerRecipientId = seller?.pagarmeRecipientId;
+
+    const pagarmeOrder = await this.pagarme.createCardOrder({
+      externalCode:    `ARENA-${dto.orderId}`,
+      amountCents:     order.totalCents,
+      customerName:    buyer.displayName,
+      customerCpf:     cpf,
+      customerPhone:   phone,
+      customerEmail:   buyer.email,
+      itemDescription,
+      installments:    dto.installments,
+      cardNumber:      dto.cardNumber,
+      cardHolderName:  dto.cardHolderName,
+      cardExpMonth:    dto.cardExpMonth,
+      cardExpYear:     dto.cardExpYear,
+      cardCvv:         dto.cardCvv,
+      arenaRecipientId,
+      sellerRecipientId,
+      commissionPct: 7,
+    });
+
+    const charge = pagarmeOrder.charges?.[0];
+    if (!charge) {
+      this.logger.error('Pagar.me credit card response missing charge', pagarmeOrder);
+      throw new Error('Pagar.me returned an unexpected response');
+    }
+
+    const chargeStatus = charge.status; // 'authorized', 'paid', 'refused', 'pending', etc.
+    const isPaid = chargeStatus === 'authorized' || chargeStatus === 'paid';
+
+    const cardLast4 = dto.cardNumber.replace(/\D/g, '').slice(-4);
+    const now = new Date().toISOString();
+
+    // Base update: store charge details and payment method regardless of status
+    const updateExpressionParts = [
+      'SET pagarmeOrderId = :poi',
+      'paymentMethod = :pm',
+      'cardChargeId = :cci',
+      'cardLast4 = :cl4',
+      'installments = :inst',
+      'updatedAt = :now',
+    ];
+    const expressionValues: Record<string, unknown> = {
+      ':poi':  pagarmeOrder.id,
+      ':pm':   'CREDIT_CARD',
+      ':cci':  charge.id,
+      ':cl4':  cardLast4,
+      ':inst': dto.installments,
+      ':now':  now,
+    };
+
+    if (isPaid) {
+      const escrowReleaseAt = new Date(Date.now() + 7 * 24 * 3_600_000).toISOString();
+      updateExpressionParts.push('#s = :paid', 'escrowReleaseAt = :era');
+      expressionValues[':paid'] = 'PAID';
+      expressionValues[':era']  = escrowReleaseAt;
+    }
+
+    await this.db.update({
+      Key: { PK: orderKey.PK, SK: orderKey.SK },
+      UpdateExpression: updateExpressionParts.join(', '),
+      ...(isPaid ? { ExpressionAttributeNames: { '#s': 'status' } } : {}),
+      ExpressionAttributeValues: expressionValues,
+    });
+
+    if (isPaid) {
+      this.logger.log(`Order ${dto.orderId} paid via credit card (charge ${charge.id})`);
+      // Async: fiscal + shipping (same as PIX path)
+      void this.fiscal.emitCommissionNfse(order);
+      void this.fiscal.emitMpcNfe(order);
+      if (order.deliveryMethod === 'CORREIOS' && order.buyerCep) {
+        void this.purchaseLabelAsync(order);
+      }
+    }
+
+    // Map Pagar.me charge status to our CardPaymentResult status
+    let resultStatus: CardPaymentResult['status'];
+    if (chargeStatus === 'authorized' || chargeStatus === 'paid') {
+      resultStatus = 'authorized';
+    } else if (chargeStatus === 'refused' || chargeStatus === 'failed' || chargeStatus === 'with_error') {
+      resultStatus = 'refused';
+    } else {
+      resultStatus = 'pending';
+    }
+
+    return {
+      status:   resultStatus,
+      orderId:  dto.orderId,
+      chargeId: charge.id,
     };
   }
 

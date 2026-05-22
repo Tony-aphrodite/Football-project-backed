@@ -41,6 +41,26 @@ export interface CreatePixOrderParams {
   commissionPct?: number;      // Arena commission % (default 7)
 }
 
+export interface CreateCardOrderParams {
+  externalCode:    string;
+  amountCents:     number;
+  customerName:    string;
+  customerCpf:     string;
+  customerPhone?:  string;
+  customerEmail?:  string;
+  itemDescription: string;
+  installments:    number;        // 1-12
+  cardNumber:      string;        // raw digits
+  cardHolderName:  string;
+  cardExpMonth:    number;
+  cardExpYear:     number;        // 4-digit
+  cardCvv:         string;
+  // Split payment recipients
+  arenaRecipientId?:  string;
+  sellerRecipientId?: string;
+  commissionPct?:     number;
+}
+
 // ── Service ──────────────────────────────────────────────────────────────────
 
 @Injectable()
@@ -117,6 +137,67 @@ export class PagarmeService {
             expires_in: params.expiresInSeconds ?? 86_400,
           },
           amount: params.amountCents,
+          // Include split if both recipient IDs are available
+          ...(params.arenaRecipientId && params.sellerRecipientId ? {
+            split: this.buildSplit(
+              params.amountCents,
+              params.arenaRecipientId,
+              params.sellerRecipientId,
+              params.commissionPct ?? 7,
+            ),
+          } : {}),
+        },
+      ],
+    });
+  }
+
+  /** Creates a Pagar.me order with a credit card charge (inline card — backend tokenization). */
+  async createCardOrder(params: CreateCardOrderParams): Promise<PagarmeOrder> {
+    const cpfDigits = params.customerCpf.replace(/\D/g, '');
+
+    const phoneDigits = (params.customerPhone ?? '+5511999999999').replace(/\D/g, '');
+    const areaCode    = phoneDigits.slice(2, 4);
+    const number      = phoneDigits.slice(4);
+
+    return this.request<PagarmeOrder>('POST', '/orders', {
+      code: params.externalCode,
+      customer: {
+        name:          params.customerName,
+        type:          'individual',
+        document:      cpfDigits,
+        document_type: 'CPF',
+        email:         params.customerEmail ?? `${cpfDigits}@arenadosmantos.app`,
+        phones: {
+          mobile_phone: {
+            country_code: '55',
+            area_code:    areaCode || '11',
+            number:       number || '999999999',
+          },
+        },
+      },
+      items: [
+        {
+          amount: params.amountCents,
+          description: params.itemDescription,
+          quantity: 1,
+          code: params.externalCode,
+        },
+      ],
+      payments: [
+        {
+          payment_method: 'credit_card',
+          amount: params.amountCents,
+          credit_card: {
+            installments: params.installments,
+            statement_descriptor: 'Arena dos Mantos',
+            card: {
+              number:      params.cardNumber.replace(/\D/g, ''),
+              holder_name: params.cardHolderName,
+              exp_month:   params.cardExpMonth,
+              exp_year:    params.cardExpYear,
+              cvv:         params.cardCvv,
+            },
+          },
           // Include split if both recipient IDs are available
           ...(params.arenaRecipientId && params.sellerRecipientId ? {
             split: this.buildSplit(
