@@ -143,4 +143,10 @@ export class AuthController {
   refresh(@Body() dto: RefreshTokenDto): Promise<AuthSession> {
     return this.auth.refresh(dto.refreshToken);
   }
+
+  @Post('logout')
+  @HttpCode(204)
+  logout(@Body() dto: RefreshTokenDto): Promise<void> {
+    return this.auth.logout(dto.refreshToken);
+  }
 }

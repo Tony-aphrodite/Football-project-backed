@@ -12,6 +12,7 @@ import { JwtService } from '@nestjs/jwt';
 import { ulid } from 'ulid';
 
 import type { AppConfig } from '../config/configuration';
+import { DynamoDbService } from '../dynamodb/dynamodb.service';
 import { UsersService } from '../users/users.service';
 import type { UserRecord } from '../users/entities/user.entity';
 import { toPublic } from '../users/entities/user.entity';
@@ -53,7 +54,31 @@ export class AuthService {
     private readonly cpf: CpfValidatorService,
     private readonly config: ConfigService<AppConfig, true>,
     private readonly totp: TotpService,
+    private readonly db: DynamoDbService,
   ) {}
+
+  private revokedJtiPk(jti: string) { return `REVOKED_JTI#${jti}`; }
+
+  async logout(refreshToken: string): Promise<void> {
+    try {
+      const payload = await this.jwt.verifyAsync<RefreshTokenPayload>(refreshToken, {
+        secret: this.config.get('jwt.refreshSecret', { infer: true }),
+      });
+      // Store revoked JTI in DynamoDB — TTL matches token expiry (30 days default)
+      const ttl = Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60;
+      await this.db.put({
+        PK:         this.revokedJtiPk(payload.jti),
+        SK:         'METADATA',
+        entityType: 'RevokedJti',
+        jti:        payload.jti,
+        userId:     payload.sub,
+        revokedAt:  new Date().toISOString(),
+        ttl,
+      });
+    } catch {
+      // Token already invalid or malformed — logout is still successful
+    }
+  }
 
   async registerWithEmail(displayName: string, email: string, password: string): Promise<AuthSession> {
     const existing = await this.users.findByEmail(email);
@@ -194,6 +219,10 @@ export class AuthService {
     } catch {
       throw new UnauthorizedException('Invalid refresh token');
     }
+    // Check if this JTI has been revoked (user logged out)
+    const revoked = await this.db.get(this.revokedJtiPk(payload.jti), 'METADATA');
+    if (revoked) throw new UnauthorizedException('Token revogado. Faça login novamente.');
+
     const user = await this.users.getById(payload.sub);
     return this.issueSession(user);
   }
