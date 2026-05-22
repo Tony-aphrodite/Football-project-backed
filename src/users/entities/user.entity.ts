@@ -38,8 +38,12 @@ export interface UserRecord {
   ratingAvgAsBuyer?: number;
   ratingCountAsBuyer: number;
 
-  // Seller shipping origin ZIP code (for Melhor Envio quoting)
-  sellerCep?: string;
+  // Seller shipping origin address (for Melhor Envio quoting)
+  sellerCep?:     string;
+  sellerRua?:     string;
+  sellerNumero?:  string;
+  sellerCidade?:  string;
+  sellerEstado?:  string;
   // Pagar.me recipient ID for payment split
   pagarmeRecipientId?: string;
 
@@ -63,7 +67,11 @@ export interface UserPublic {
   email?: string;
   phoneE164?: string;
   cpf?: string;
-  sellerCep?: string;
+  sellerCep?:     string;
+  sellerRua?:     string;
+  sellerNumero?:  string;
+  sellerCidade?:  string;
+  sellerEstado?:  string;
   pagarmeRecipientId?: string;
   lgpdConsentAt?: string;
   ratingAvgAsSeller?: number;
@@ -84,7 +92,11 @@ export function toPublic(u: UserRecord): UserPublic {
     email: u.email,
     phoneE164: u.phoneE164,
     cpf: u.cpf,
-    sellerCep:          u.sellerCep,
+    sellerCep:     u.sellerCep,
+    sellerRua:     u.sellerRua,
+    sellerNumero:  u.sellerNumero,
+    sellerCidade:  u.sellerCidade,
+    sellerEstado:  u.sellerEstado,
     pagarmeRecipientId: u.pagarmeRecipientId,
     lgpdConsentAt:      u.lgpdConsentAt,
     ratingAvgAsSeller: u.ratingAvgAsSeller,

@@ -215,15 +215,25 @@ export class UsersService {
     return toPublic({ ...u, pagarmeRecipientId: recipientId });
   }
 
-  async updateSellerCep(userId: string, cep: string): Promise<UserPublic> {
+  async updateSellerCep(
+    userId: string, cep: string,
+    rua?: string, numero?: string, cidade?: string, estado?: string,
+  ): Promise<UserPublic> {
     const u = await this.getById(userId);
     const cleaned = cep.replace(/\D/g, '').slice(0, 8);
     await this.db.update({
       Key: { PK: u.PK, SK: u.SK },
-      UpdateExpression: 'SET sellerCep = :c, updatedAt = :now',
-      ExpressionAttributeValues: { ':c': cleaned, ':now': new Date().toISOString() },
+      UpdateExpression: 'SET sellerCep = :c, sellerRua = :r, sellerNumero = :n, sellerCidade = :ci, sellerEstado = :e, updatedAt = :now',
+      ExpressionAttributeValues: {
+        ':c':   cleaned,
+        ':r':   rua    ?? u.sellerRua    ?? '',
+        ':n':   numero ?? u.sellerNumero ?? '',
+        ':ci':  cidade ?? u.sellerCidade ?? '',
+        ':e':   estado ?? u.sellerEstado ?? '',
+        ':now': new Date().toISOString(),
+      },
     });
-    return toPublic({ ...u, sellerCep: cleaned });
+    return toPublic({ ...u, sellerCep: cleaned, sellerRua: rua, sellerNumero: numero, sellerCidade: cidade, sellerEstado: estado });
   }
 
   // ── private helpers ────────────────────────────────────────────────────────

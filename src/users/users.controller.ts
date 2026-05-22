@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, Patch, Post, Request, UseGuards } from '@nestjs/common';
-import { IsString, Length } from 'class-validator';
+import { IsOptional, IsString, Length } from 'class-validator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { AdminGuard } from '../common/guards/admin.guard';
 import { UsersService } from './users.service';
@@ -7,6 +7,10 @@ import type { JwtPayload } from '../auth/types/jwt-payload.type';
 
 class UpdateCepDto {
   @IsString() @Length(8, 9) cep!: string;
+  @IsOptional() @IsString() rua?:    string;
+  @IsOptional() @IsString() numero?: string;
+  @IsOptional() @IsString() cidade?: string;
+  @IsOptional() @IsString() estado?: string;
 }
 
 class SetRecipientDto {
@@ -20,7 +24,7 @@ export class UsersController {
   @UseGuards(JwtAuthGuard)
   @Patch('me/cep')
   updateCep(@Body() dto: UpdateCepDto, @Request() req: { user: JwtPayload }) {
-    return this.users.updateSellerCep(req.user.sub, dto.cep);
+    return this.users.updateSellerCep(req.user.sub, dto.cep, dto.rua, dto.numero, dto.cidade, dto.estado);
   }
 
   // ── Admin: manage Pagar.me recipient IDs ─────────────────────────────────
