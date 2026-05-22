@@ -99,4 +99,4 @@ export function toListingPublic(l: ListingRecord): ListingPublic {
   };
 }
 
-export const VERIFIED_SUPPLIERS: ListingSupplier[] = ['ADIDAS', 'NIKE', 'PUMA'];
+export const VERIFIED_SUPPLIERS: ListingSupplier[] = ['ADIDAS', 'NIKE', 'PUMA', 'NEW_BALANCE'];
