@@ -233,6 +233,17 @@ export class OrdersService {
   }
 
   async estimateShipping(dto: ShippingEstimateDto): Promise<ShippingOption[]> {
-    return this.shipping.estimate(dto.fromCep, dto.toCep, dto.weightGrams);
+    // Look up listing to get seller's CEP and package weight
+    const listingKey = Keys.listing(dto.listingId);
+    const listing = await this.db.get<ListingRecord>(listingKey.PK, listingKey.SK);
+    if (!listing) throw new NotFoundException('Listing not found');
+
+    // Look up seller to get their shipping origin CEP
+    const sellerKey = Keys.user(listing.sellerId);
+    const seller = await this.db.get<{ sellerCep?: string }>(sellerKey.PK, sellerKey.SK);
+    const fromCep = seller?.sellerCep ?? '01310100'; // fallback to São Paulo
+
+    const weightGrams = dto.weightGrams ?? listing.weightGrams ?? 300;
+    return this.shipping.estimate(fromCep, dto.toCep, weightGrams);
   }
 }
