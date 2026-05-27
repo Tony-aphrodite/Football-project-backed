@@ -55,6 +55,9 @@ export const Keys = {
     PK: `COUPON#${code}`,
     SK: `REDEMPTION#${userId}`,
   }),
+
+  // ── Password reset token ──────────────────────────────────────────────────
+  pwdReset: (code: string) => ({ PK: `PWDRESET#${code}`, SK: 'METADATA' as const }),
 } as const;
 
 // ── GSI partition values ───────────────────────────────────────────────────
