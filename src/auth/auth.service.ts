@@ -3,6 +3,7 @@ import {
   ConflictException,
   Injectable,
   Logger,
+  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
@@ -13,6 +14,7 @@ import { ulid } from 'ulid';
 
 import type { AppConfig } from '../config/configuration';
 import { DynamoDbService } from '../dynamodb/dynamodb.service';
+import { Keys } from '../dynamodb/keys';
 import { UsersService } from '../users/users.service';
 import type { UserRecord } from '../users/entities/user.entity';
 import { toPublic } from '../users/entities/user.entity';
@@ -93,6 +95,86 @@ export class AuthService {
     const passwordHash = await bcrypt.hash(password, 12);
     const user = await this.users.create({ displayName, email, passwordHash, contactPhone, marketingConsent });
     return this.issueSession(user);
+  }
+
+  async forgotPassword(email: string): Promise<void> {
+    const user = await this.users.findByEmail(email);
+    // Always return success to prevent email enumeration
+    if (!user || !user.passwordHash) return;
+
+    const code    = String(Math.floor(100000 + Math.random() * 900000));
+    const now     = new Date();
+    const expires = new Date(now.getTime() + 15 * 60 * 1000).toISOString();
+
+    const k = Keys.pwdReset(code);
+    await this.db.put({
+      ...k,
+      entityType: 'PwdReset',
+      userId:     user.userId,
+      email:      email.toLowerCase(),
+      expiresAt:  expires,
+      createdAt:  now.toISOString(),
+    });
+
+    // Send email — graceful no-op if RESEND_API_KEY not configured
+    const apiKey = process.env.RESEND_API_KEY;
+    if (apiKey) {
+      try {
+        const { Resend } = await import('resend');
+        const resend = new Resend(apiKey);
+        await resend.emails.send({
+          from: 'Arena dos Mantos <noreply@arenadosmantos.app>',
+          to:   email,
+          subject: 'Redefinição de senha — Arena dos Mantos',
+          html: `
+            <div style="font-family:sans-serif;max-width:480px;margin:0 auto">
+              <h2 style="color:#335336">Redefinição de senha</h2>
+              <p>Seu código de verificação é:</p>
+              <div style="font-size:36px;font-weight:bold;letter-spacing:8px;color:#D4AF37;padding:16px 0">${code}</div>
+              <p style="color:#666">Este código expira em <strong>15 minutos</strong>.</p>
+              <p style="color:#666;font-size:12px">Se você não solicitou a redefinição de senha, ignore este e-mail.</p>
+            </div>
+          `,
+        });
+      } catch (e) {
+        console.error('[Auth] Failed to send reset email:', e);
+      }
+    } else {
+      console.log(`[Auth] RESEND_API_KEY not set. Reset code for ${email}: ${code}`);
+    }
+  }
+
+  async resetPassword(email: string, code: string, newPassword: string): Promise<AuthSession> {
+    const k      = Keys.pwdReset(code);
+    const record = await this.db.get<{ userId: string; email: string; expiresAt: string }>(k.PK, k.SK);
+
+    if (!record) throw new BadRequestException('Código inválido ou expirado');
+    if (record.email !== email.toLowerCase()) throw new BadRequestException('Código inválido ou expirado');
+    if (new Date(record.expiresAt) < new Date()) throw new BadRequestException('Código expirado. Solicite um novo.');
+
+    const user = await this.users.findByEmail(email);
+    if (!user) throw new NotFoundException('Usuário não encontrado');
+
+    const passwordHash = await bcrypt.hash(newPassword, 12);
+    const userKey = Keys.user(user.userId);
+    await this.db.update({
+      Key: { PK: userKey.PK, SK: userKey.SK },
+      UpdateExpression: 'SET passwordHash = :hash, updatedAt = :now',
+      ExpressionAttributeValues: { ':hash': passwordHash, ':now': new Date().toISOString() },
+    });
+
+    // Delete the used token
+    try {
+      await this.db.update({
+        Key: { PK: k.PK, SK: k.SK },
+        UpdateExpression: 'SET used = :t',
+        ExpressionAttributeValues: { ':t': true },
+      });
+    } catch { /* ignore */ }
+
+    const updated = await this.users.findByEmail(email);
+    if (!updated) throw new NotFoundException('Usuário não encontrado');
+    return this.issueSession(updated);
   }
 
   async signInWithEmail(email: string, password: string): Promise<AuthSession | TotpChallenge> {
