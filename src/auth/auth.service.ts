@@ -123,7 +123,7 @@ export class AuthService {
         const { Resend } = await import('resend');
         const resend = new Resend(apiKey);
         await resend.emails.send({
-          from: 'Arena dos Mantos <noreply@arenadosmantos.app>',
+          from: 'Arena dos Mantos <onboarding@resend.dev>',
           to:   email,
           subject: 'Redefinição de senha — Arena dos Mantos',
           html: `
