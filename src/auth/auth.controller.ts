@@ -11,6 +11,8 @@ import { VerifyPhoneDto } from './dto/verify-phone.dto';
 import { VerifyCpfDto } from './dto/verify-cpf.dto';
 import { LgpdConsentDto } from './dto/lgpd-consent.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 import { TotpActivateDto } from './dto/totp-activate.dto';
 import { TotpAuthenticateDto } from './dto/totp-authenticate.dto';
 import { TotpService } from './services/totp.service';
@@ -35,6 +37,20 @@ export class AuthController {
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
   register(@Body() dto: RegisterDto): Promise<AuthSession> {
     return this.auth.registerWithEmail(dto.displayName, dto.email, dto.password, dto.contactPhone, dto.marketingConsent);
+  }
+
+  @Post('forgot-password')
+  @HttpCode(204)
+  @Throttle({ default: { limit: 3, ttl: 60_000 } })
+  forgotPassword(@Body() dto: ForgotPasswordDto): Promise<void> {
+    return this.auth.forgotPassword(dto.email);
+  }
+
+  @Post('reset-password')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  resetPassword(@Body() dto: ResetPasswordDto): Promise<AuthSession> {
+    return this.auth.resetPassword(dto.email, dto.code, dto.newPassword);
   }
 
   @Post('login')
