@@ -80,12 +80,18 @@ export class AuthService {
     }
   }
 
-  async registerWithEmail(displayName: string, email: string, password: string): Promise<AuthSession> {
+  async registerWithEmail(
+    displayName: string,
+    email: string,
+    password: string,
+    contactPhone?: string,
+    marketingConsent?: boolean,
+  ): Promise<AuthSession> {
     const existing = await this.users.findByEmail(email);
     if (existing) throw new ConflictException('E-mail já cadastrado');
 
     const passwordHash = await bcrypt.hash(password, 12);
-    const user = await this.users.create({ displayName, email, passwordHash });
+    const user = await this.users.create({ displayName, email, passwordHash, contactPhone, marketingConsent });
     return this.issueSession(user);
   }
 

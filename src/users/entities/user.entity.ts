@@ -51,6 +51,10 @@ export interface UserRecord {
   listingsActiveCount: number;   // hard cap of 20
   mpcPurchasesCount: number;     // hard cap of 5
 
+  // Marketing / communications consent collected at registration
+  contactPhone?: string;
+  marketingConsent?: boolean;
+
   // Two-factor authentication (TOTP / Google Authenticator)
   totpEnabled?: boolean;
   totpSecret?: string;         // stored only after activation

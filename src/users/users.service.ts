@@ -11,6 +11,8 @@ interface CreateUserInput {
   googleSub?: string;
   appleSub?: string;
   passwordHash?: string;
+  contactPhone?: string;
+  marketingConsent?: boolean;
 }
 
 @Injectable()
@@ -70,6 +72,8 @@ export class UsersService {
       googleSub: input.googleSub,
       appleSub: input.appleSub,
       passwordHash: input.passwordHash,
+      contactPhone: input.contactPhone,
+      marketingConsent: input.marketingConsent,
       ratingCountAsSeller: 0,
       ratingCountAsBuyer: 0,
       listingsActiveCount: 0,

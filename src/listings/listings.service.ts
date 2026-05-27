@@ -271,30 +271,27 @@ export class ListingsService {
     const userKey = Keys.user(sellerId);
     const now     = new Date().toISOString();
 
-    await this.db.transactWrite([
-      {
-        Update: {
-          TableName:                 this.db.tableName,
-          Key:                       { PK: k.PK, SK: k.SK },
-          UpdateExpression:          'SET #s = :removed, GSI1PK = :gsi1pk, updatedAt = :now',
-          ExpressionAttributeNames:  { '#s': 'status' },
-          ExpressionAttributeValues: {
-            ':removed': 'REMOVED',
-            ':gsi1pk':  Gsi.listingFeed('REMOVED').GSI1PK,
-            ':now':     now,
-          },
-        },
+    // Mark listing as REMOVED — this must always succeed
+    await this.db.update({
+      Key:                       { PK: k.PK, SK: k.SK },
+      UpdateExpression:          'SET #s = :removed, GSI1PK = :gsi1pk, updatedAt = :now',
+      ExpressionAttributeNames:  { '#s': 'status' },
+      ExpressionAttributeValues: {
+        ':removed': 'REMOVED',
+        ':gsi1pk':  Gsi.listingFeed('REMOVED').GSI1PK,
+        ':now':     now,
       },
-      {
-        Update: {
-          TableName:                 this.db.tableName,
-          Key:                       { PK: userKey.PK, SK: userKey.SK },
-          UpdateExpression:          'SET listingsActiveCount = listingsActiveCount - :one, updatedAt = :now',
-          ConditionExpression:       'listingsActiveCount > :zero',
-          ExpressionAttributeValues: { ':one': 1, ':zero': 0, ':now': now },
-        },
-      },
-    ]);
+    });
+
+    // Decrement counter — best-effort, silently ignore if already 0 or field missing
+    try {
+      await this.db.update({
+        Key:                       { PK: userKey.PK, SK: userKey.SK },
+        UpdateExpression:          'SET listingsActiveCount = listingsActiveCount - :one, updatedAt = :now',
+        ConditionExpression:       'listingsActiveCount > :zero',
+        ExpressionAttributeValues: { ':one': 1, ':zero': 0, ':now': now },
+      });
+    } catch { /* counter already at 0 or missing — listing is still removed */ }
 
     void this.algolia.remove(listingId);
   }
