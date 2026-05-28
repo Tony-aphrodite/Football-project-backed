@@ -116,7 +116,10 @@ export class AuthService {
       createdAt:  now.toISOString(),
     });
 
-    // Send email — graceful no-op if RESEND_API_KEY not configured
+    // Always log the code — useful for testing via Railway logs
+    this.logger.log(`[PwdReset] code=${code} email=${email} expires=${expires}`);
+
+    // Send email via Resend when API key is configured
     const apiKey = process.env.RESEND_API_KEY;
     if (apiKey) {
       try {
@@ -137,10 +140,8 @@ export class AuthService {
           `,
         });
       } catch (e) {
-        console.error('[Auth] Failed to send reset email:', e);
+        this.logger.error(`[PwdReset] Resend failed: ${e}`);
       }
-    } else {
-      console.log(`[Auth] RESEND_API_KEY not set. Reset code for ${email}: ${code}`);
     }
   }
 
