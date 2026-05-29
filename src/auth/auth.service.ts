@@ -116,17 +116,22 @@ export class AuthService {
       createdAt:  now.toISOString(),
     });
 
-    // Always log the code — useful for testing via Railway logs
-    this.logger.log(`[PwdReset] code=${code} email=${email} expires=${expires}`);
+    // Always log the code for debugging
+    this.logger.log(`[PwdReset] code=${code} email=${email}`);
 
-    // Send email via Resend when API key is configured
-    const apiKey = process.env.RESEND_API_KEY;
-    if (apiKey) {
+    // Send via Gmail SMTP (works for all emails, no domain verification needed)
+    const gmailUser = process.env.GMAIL_USER;
+    const gmailPass = process.env.GMAIL_APP_PASSWORD;
+
+    if (gmailUser && gmailPass) {
       try {
-        const { Resend } = await import('resend');
-        const resend = new Resend(apiKey);
-        await resend.emails.send({
-          from: 'Arena dos Mantos <onboarding@resend.dev>',
+        const nodemailer = await import('nodemailer');
+        const transporter = nodemailer.createTransport({
+          service: 'gmail',
+          auth: { user: gmailUser, pass: gmailPass },
+        });
+        await transporter.sendMail({
+          from: `Arena dos Mantos <${gmailUser}>`,
           to:   email,
           subject: 'Redefinição de senha — Arena dos Mantos',
           html: `
@@ -139,9 +144,12 @@ export class AuthService {
             </div>
           `,
         });
+        this.logger.log(`[PwdReset] email sent to ${email}`);
       } catch (e) {
-        this.logger.error(`[PwdReset] Resend failed: ${e}`);
+        this.logger.error(`[PwdReset] Gmail send failed: ${e}`);
       }
+    } else {
+      this.logger.warn('[PwdReset] GMAIL_USER/GMAIL_APP_PASSWORD not set — email not sent');
     }
   }
 
