@@ -15,6 +15,14 @@ import { AlgoliaService, type ListingIndexRecord } from '../search/algolia.servi
 
 const LISTING_CAP = 20;
 
+function getEffectiveCap(email?: string): number {
+  const unlimited = (process.env.UNLIMITED_SELLER_EMAILS ?? '')
+    .split(',')
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
+  return email && unlimited.includes(email.toLowerCase()) ? 999999 : LISTING_CAP;
+}
+
 @Injectable()
 export class ListingsService {
   constructor(
@@ -52,10 +60,11 @@ export class ListingsService {
   async create(sellerId: string, dto: CreateListingDto): Promise<{ listing: ListingPublic; listingsActiveCount: number }> {
     // Enforce cap atomically via conditional update on the user profile.
     const userKey = Keys.user(sellerId);
-    const userItem = await this.db.get<{ listingsActiveCount: number; displayName: string }>(userKey.PK, userKey.SK);
+    const userItem = await this.db.get<{ listingsActiveCount: number; displayName: string; email?: string }>(userKey.PK, userKey.SK);
     if (!userItem) throw new NotFoundException('User not found');
-    if (userItem.listingsActiveCount >= LISTING_CAP) {
-      throw new BadRequestException(`Limite de ${LISTING_CAP} anúncios atingido`);
+    const effectiveCap = getEffectiveCap(userItem.email);
+    if (userItem.listingsActiveCount >= effectiveCap) {
+      throw new BadRequestException(`Limite de ${effectiveCap} anúncios atingido`);
     }
 
     // Non-verified supplier must have the ack flag set.
@@ -121,7 +130,7 @@ export class ListingsService {
           Key:                       { PK: userKey.PK, SK: userKey.SK },
           UpdateExpression:          'SET listingsActiveCount = :n, updatedAt = :now',
           ConditionExpression:       'listingsActiveCount < :cap',
-          ExpressionAttributeValues: { ':n': newCount, ':now': now, ':cap': LISTING_CAP },
+          ExpressionAttributeValues: { ':n': newCount, ':now': now, ':cap': effectiveCap },
         },
       },
     ]);
