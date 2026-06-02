@@ -7,7 +7,6 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
-import * as nodemailer from 'nodemailer';
 import { TotpService } from './services/totp.service';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
@@ -120,36 +119,39 @@ export class AuthService {
     // Always log the code for debugging
     this.logger.log(`[PwdReset] code=${code} email=${email}`);
 
-    // Send via Gmail SMTP (works for all emails, no domain verification needed)
-    const gmailUser = process.env.GMAIL_USER;
-    const gmailPass = process.env.GMAIL_APP_PASSWORD;
-
-    if (gmailUser && gmailPass) {
+    // Send via Brevo REST API (no npm package needed, works for all emails)
+    const brevoKey = process.env.BREVO_API_KEY;
+    if (brevoKey) {
       try {
-        const transporter = nodemailer.createTransport({
-          service: 'gmail',
-          auth: { user: gmailUser, pass: gmailPass },
+        const res = await fetch('https://api.brevo.com/v3/smtp/email', {
+          method: 'POST',
+          headers: { 'api-key': brevoKey, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sender:      { name: 'Arena dos Mantos', email: 'noreply@arenadosmantos.app.br' },
+            to:          [{ email }],
+            subject:     'Redefinição de senha — Arena dos Mantos',
+            htmlContent: `
+              <div style="font-family:sans-serif;max-width:480px;margin:0 auto">
+                <h2 style="color:#335336">Redefinição de senha</h2>
+                <p>Seu código de verificação é:</p>
+                <div style="font-size:36px;font-weight:bold;letter-spacing:8px;color:#D4AF37;padding:16px 0">${code}</div>
+                <p style="color:#666">Este código expira em <strong>15 minutos</strong>.</p>
+                <p style="color:#666;font-size:12px">Se você não solicitou a redefinição de senha, ignore este e-mail.</p>
+              </div>
+            `,
+          }),
         });
-        await transporter.sendMail({
-          from: `Arena dos Mantos <${gmailUser}>`,
-          to:   email,
-          subject: 'Redefinição de senha — Arena dos Mantos',
-          html: `
-            <div style="font-family:sans-serif;max-width:480px;margin:0 auto">
-              <h2 style="color:#335336">Redefinição de senha</h2>
-              <p>Seu código de verificação é:</p>
-              <div style="font-size:36px;font-weight:bold;letter-spacing:8px;color:#D4AF37;padding:16px 0">${code}</div>
-              <p style="color:#666">Este código expira em <strong>15 minutos</strong>.</p>
-              <p style="color:#666;font-size:12px">Se você não solicitou a redefinição de senha, ignore este e-mail.</p>
-            </div>
-          `,
-        });
-        this.logger.log(`[PwdReset] email sent to ${email}`);
+        if (res.ok) {
+          this.logger.log(`[PwdReset] email sent to ${email}`);
+        } else {
+          const err = await res.text();
+          this.logger.error(`[PwdReset] Brevo error: ${err}`);
+        }
       } catch (e) {
-        this.logger.error(`[PwdReset] Gmail send failed: ${e}`);
+        this.logger.error(`[PwdReset] fetch failed: ${e}`);
       }
     } else {
-      this.logger.warn('[PwdReset] GMAIL_USER/GMAIL_APP_PASSWORD not set — email not sent');
+      this.logger.warn('[PwdReset] BREVO_API_KEY not set — email not sent, check logs for code');
     }
   }
 
