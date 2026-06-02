@@ -7,6 +7,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
+import * as nodemailer from 'nodemailer';
 import { TotpService } from './services/totp.service';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
@@ -125,7 +126,6 @@ export class AuthService {
 
     if (gmailUser && gmailPass) {
       try {
-        const nodemailer = await import('nodemailer');
         const transporter = nodemailer.createTransport({
           service: 'gmail',
           auth: { user: gmailUser, pass: gmailPass },
