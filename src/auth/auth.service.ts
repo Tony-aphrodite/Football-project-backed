@@ -127,7 +127,7 @@ export class AuthService {
           method: 'POST',
           headers: { 'api-key': brevoKey, 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            sender:      { name: 'Arena dos Mantos', email: 'noreply@arenadosmantos.app.br' },
+            sender:      { name: 'Arena dos Mantos', email: 'senha@arenadosmantos.app.br' },
             to:          [{ email }],
             subject:     'Redefinição de senha — Arena dos Mantos',
             htmlContent: `
