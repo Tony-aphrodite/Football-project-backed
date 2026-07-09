@@ -12,7 +12,7 @@ export interface ListingIndexRecord {
   teamName: string;
   continent: string;
   country: string;
-  season: string;
+  season?: string;
   supplier: string;
   model: string;
   garmentType: string;

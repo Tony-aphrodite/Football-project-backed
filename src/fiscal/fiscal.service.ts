@@ -124,7 +124,7 @@ export class FiscalService {
         buyerCpf:    buyer?.cpf,
         buyerEmail:  buyer?.email,
         teamName:    order.teamName,
-        season:      order.season,
+        season:      order.season ?? '',
         priceBrl,
       });
 

@@ -24,7 +24,7 @@ export interface ListingRecord {
   teamName:    string;
   continent:   ListingContinent;
   country:     string;
-  season:      string;
+  season?:     string;
   supplier:    ListingSupplier;
   model:       ListingModel;
   garmentType: ListingGarmentType;
@@ -55,7 +55,7 @@ export interface ListingPublic {
   teamName:    string;
   continent:   ListingContinent;
   country:     string;
-  season:      string;
+  season?:     string;
   supplier:    ListingSupplier;
   model:       ListingModel;
   garmentType: ListingGarmentType;

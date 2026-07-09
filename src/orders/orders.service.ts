@@ -232,6 +232,30 @@ export class OrdersService {
     });
   }
 
+  async addTracking(sellerId: string, orderId: string, correiosTracking: string): Promise<OrderPublic> {
+    const k = Keys.order(orderId);
+    const order = await this.db.get<OrderRecord>(k.PK, k.SK);
+    if (!order) throw new NotFoundException('Order not found');
+    if (order.sellerId !== sellerId) throw new ForbiddenException('Not your order');
+    if (order.status !== 'PAID' && order.status !== 'SHIPPED') {
+      throw new BadRequestException('Tracking can only be added when order is PAID or SHIPPED');
+    }
+
+    const now = new Date().toISOString();
+    await this.db.update({
+      Key:                       { PK: k.PK, SK: k.SK },
+      UpdateExpression:          'SET correiosTracking = :tracking, #s = :shipped, updatedAt = :now',
+      ExpressionAttributeNames:  { '#s': 'status' },
+      ExpressionAttributeValues: {
+        ':tracking': correiosTracking.toUpperCase(),
+        ':shipped':  'SHIPPED',
+        ':now':      now,
+      },
+    });
+
+    return toOrderPublic({ ...order, correiosTracking: correiosTracking.toUpperCase(), status: 'SHIPPED', updatedAt: now });
+  }
+
   async estimateShipping(dto: ShippingEstimateDto): Promise<ShippingOption[]> {
     // Look up listing to get seller's CEP and package weight
     const listingKey = Keys.listing(dto.listingId);

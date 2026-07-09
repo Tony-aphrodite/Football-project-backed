@@ -13,6 +13,7 @@ import { OrdersService } from './orders.service';
 import type { ShippingOption } from '../shipping/shipping.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { ShippingEstimateDto } from './dto/shipping-estimate.dto';
+import { UpdateTrackingDto } from './dto/update-tracking.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { JwtPayload } from '../auth/types/jwt-payload.type';
@@ -63,5 +64,15 @@ export class OrdersController {
     @Param('id') id: string,
   ): Promise<void> {
     return this.orders.confirmReceipt(user.sub, id);
+  }
+
+  @Patch(':id/tracking')
+  @UseGuards(JwtAuthGuard)
+  addTracking(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+    @Body() dto: UpdateTrackingDto,
+  ): Promise<OrderPublic> {
+    return this.orders.addTracking(user.sub, id, dto.correiosTracking);
   }
 }

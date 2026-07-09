@@ -34,9 +34,10 @@ export class CreateListingDto {
   @MinLength(2)
   country!: string;
 
+  @IsOptional()
   @IsString()
   @MinLength(4)
-  season!: string;
+  season?: string;
 
   @IsEnum(['ADIDAS', 'NIKE', 'PUMA', 'UMBRO', 'KAPPA', 'LE_COQ_SPORTIF',
            'NEW_BALANCE', 'UNDER_ARMOUR', 'PENALTY', 'TOPPER', 'REUSCH', 'LOTTO', 'OUTRO'])

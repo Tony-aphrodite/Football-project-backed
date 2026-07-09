@@ -21,7 +21,7 @@ export interface OrderRecord {
   // Listing snapshot at order time
   teamName:    string;
   supplier:    string;
-  season:      string;
+  season?:     string;
   size:        string;
   condition:   string;
   priceCents:  number;
@@ -73,7 +73,7 @@ export interface OrderPublic {
   listingId:      string;
   teamName:       string;
   supplier:       string;
-  season:         string;
+  season?:        string;
   size:           string;
   condition:      string;
   priceCents:     number;
