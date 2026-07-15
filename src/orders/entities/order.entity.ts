@@ -29,8 +29,9 @@ export interface OrderRecord {
   deliveryMethod: DeliveryMethod;
   shippingCents:  number;
   totalCents:     number;
-  buyerCep?:     string;
-  sellerCep?:    string;
+  buyerCep?:          string;
+  shippingServiceId?: number;
+  sellerCep?:         string;
   couponCode?:   string;
   discountPct?:  number;
   discountCents?: number;
@@ -81,8 +82,9 @@ export interface OrderPublic {
   deliveryMethod: DeliveryMethod;
   shippingCents:  number;
   totalCents:     number;
-  buyerCep?:      string;
-  sellerCep?:     string;
+  buyerCep?:          string;
+  shippingServiceId?: number;
+  sellerCep?:         string;
   couponCode?:    string;
   discountPct?:   number;
   discountCents?: number;
@@ -118,7 +120,7 @@ export function toOrderPublic(o: OrderRecord): OrderPublic {
     size: o.size, condition: o.condition, priceCents: o.priceCents,
     photoKeys: o.photoKeys, deliveryMethod: o.deliveryMethod,
     shippingCents: o.shippingCents, totalCents: o.totalCents,
-    buyerCep: o.buyerCep, sellerCep: o.sellerCep,
+    buyerCep: o.buyerCep, shippingServiceId: o.shippingServiceId, sellerCep: o.sellerCep,
     couponCode: o.couponCode, discountPct: o.discountPct, discountCents: o.discountCents,
     status: o.status,
     paymentMethod:    o.paymentMethod,

@@ -5,6 +5,10 @@ import { AdminGuard } from '../common/guards/admin.guard';
 import { UsersService } from './users.service';
 import type { JwtPayload } from '../auth/types/jwt-payload.type';
 
+class UpdatePushTokenDto {
+  @IsString() token!: string;
+}
+
 class UpdateCepDto {
   @IsString() @Length(8, 9) cep!: string;
   @IsOptional() @IsString() rua?:    string;
@@ -25,6 +29,12 @@ export class UsersController {
   @Patch('me/cep')
   updateCep(@Body() dto: UpdateCepDto, @Request() req: { user: JwtPayload }) {
     return this.users.updateSellerCep(req.user.sub, dto.cep, dto.rua, dto.numero, dto.cidade, dto.estado);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Patch('me/push-token')
+  updatePushToken(@Body() dto: UpdatePushTokenDto, @Request() req: { user: JwtPayload }) {
+    return this.users.updatePushToken(req.user.sub, dto.token);
   }
 
   // ── Admin: manage Pagar.me recipient IDs ─────────────────────────────────

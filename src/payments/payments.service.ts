@@ -15,6 +15,7 @@ import { ShippingService } from '../shipping/shipping.service';
 import { UsersService } from '../users/users.service';
 import { DeveloperEarningsService } from '../developer-earnings/developer-earnings.service';
 import { FiscalService } from '../fiscal/fiscal.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import type { AppConfig } from '../config/configuration';
 
 export interface PixPaymentResult {
@@ -49,8 +50,9 @@ export class PaymentsService {
     private readonly shipping:    ShippingService,
     private readonly users:       UsersService,
     private readonly devEarnings: DeveloperEarningsService,
-    private readonly fiscal:      FiscalService,
-    private readonly config:      ConfigService<AppConfig, true>,
+    private readonly fiscal:         FiscalService,
+    private readonly notifications:  NotificationsService,
+    private readonly config:         ConfigService<AppConfig, true>,
   ) {}
 
   // ── Initiate PIX ─────────────────────────────────────────────────────────
@@ -375,12 +377,24 @@ export class PaymentsService {
 
     this.logger.log(`Order ${orderId} marked PAID, escrow releases at ${escrowReleaseAt}`);
 
-    // Async: fiscal invoices + shipping label (do not block payment confirmation)
+    // Async: notifications, fiscal invoices, shipping label
+    void this.notifyPaid(order);
     void this.fiscal.emitCommissionNfse(order);
     void this.fiscal.emitMpcNfe(order);
     if (order.deliveryMethod === 'CORREIOS' && order.buyerCep) {
       void this.purchaseLabelAsync(order);
     }
+  }
+
+  private async notifyPaid(order: OrderRecord): Promise<void> {
+    const seller = await this.users.findById(order.sellerId).catch(() => null);
+    const shortId = order.orderId.slice(-8).toUpperCase();
+    await this.notifications.send(
+      seller?.expoPushToken,
+      '🛒 Novo pedido pago!',
+      `${order.buyerName} comprou ${order.teamName}. Pedido #${shortId}`,
+      { orderId: order.orderId, screen: 'OrderDetail' },
+    );
   }
 
   private async purchaseLabelAsync(order: OrderRecord): Promise<void> {
@@ -392,8 +406,8 @@ export class PaymentsService {
       const listingKey = Keys.listing(order.listingId);
       const listing = await this.db.get<{ weightGrams?: number }>(listingKey.PK, listingKey.SK);
 
-      // Default service ID 1 = PAC, 2 = SEDEX (Melhor Envio Correios)
-      const serviceId = 2; // SEDEX as default for speed; TODO: store selected service in order
+      // Use the service ID the buyer selected at checkout; fall back to PAC (1)
+      const serviceId = order.shippingServiceId ?? 1;
 
       const result = await this.shipping.purchaseLabel({
         orderId:      order.orderId,
@@ -450,6 +464,15 @@ export class PaymentsService {
           `Order ${order.orderId} shipped. Tracking: ${result.trackingCode}. ` +
           `Spread: R$${(spreadCents / 100).toFixed(2)} → ${spreadResult.beneficiary} ` +
           `(developer: R$${(spreadResult.developerGets / 100).toFixed(2)}, arena: R$${(spreadResult.arenaGets / 100).toFixed(2)})`
+        );
+
+        // Notify buyer that item was shipped
+        const buyer = await this.users.findById(order.buyerId).catch(() => null);
+        void this.notifications.send(
+          buyer?.expoPushToken,
+          '📦 Seu pedido foi enviado!',
+          `${order.teamName} está a caminho. Rastreio: ${result.trackingCode}`,
+          { orderId: order.orderId, screen: 'OrderDetail' },
         );
       }
     } catch (err) {

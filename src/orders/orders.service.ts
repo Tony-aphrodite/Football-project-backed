@@ -14,12 +14,16 @@ import type { CouponRecord } from '../coupons/entities/coupon.entity';
 import type { CreateOrderDto } from './dto/create-order.dto';
 import type { ShippingEstimateDto } from './dto/shipping-estimate.dto';
 import { ShippingService, type ShippingOption } from '../shipping/shipping.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { UsersService } from '../users/users.service';
 
 @Injectable()
 export class OrdersService {
   constructor(
-    private readonly db:       DynamoDbService,
-    private readonly shipping: ShippingService,
+    private readonly db:            DynamoDbService,
+    private readonly shipping:      ShippingService,
+    private readonly notifications: NotificationsService,
+    private readonly users:         UsersService,
   ) {}
 
   async create(buyerId: string, dto: CreateOrderDto): Promise<OrderPublic> {
@@ -96,7 +100,8 @@ export class OrdersService {
       deliveryMethod: dto.deliveryMethod,
       shippingCents,
       totalCents,
-      buyerCep:       dto.buyerCep,
+      buyerCep:          dto.buyerCep,
+      shippingServiceId: dto.shippingServiceId,
       sellerCep,
       couponCode,
       discountPct:    discountPct || undefined,
@@ -253,7 +258,18 @@ export class OrdersService {
       },
     });
 
-    return toOrderPublic({ ...order, correiosTracking: correiosTracking.toUpperCase(), status: 'SHIPPED', updatedAt: now });
+    const updated = toOrderPublic({ ...order, correiosTracking: correiosTracking.toUpperCase(), status: 'SHIPPED', updatedAt: now });
+
+    // Notify buyer
+    const buyer = await this.users.findById(order.buyerId).catch(() => null);
+    void this.notifications.send(
+      buyer?.expoPushToken,
+      '📦 Seu pedido foi enviado!',
+      `${order.teamName} está a caminho. Rastreio: ${correiosTracking.toUpperCase()}`,
+      { orderId: order.orderId, screen: 'OrderDetail' },
+    );
+
+    return updated;
   }
 
   async estimateShipping(dto: ShippingEstimateDto): Promise<ShippingOption[]> {

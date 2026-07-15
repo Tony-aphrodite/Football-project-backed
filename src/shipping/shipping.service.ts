@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import type { AppConfig } from '../config/configuration';
 
 export interface ShippingOption {
+  id:         number;   // Melhor Envio service ID
   service:    string;
   company:    string;
   priceCents: number;
@@ -58,22 +59,22 @@ function fallback(toCep: string): ShippingOption[] {
   const region = parseInt(toCep.replace(/\D/g, '').slice(0, 2), 10);
   if (region >= 1 && region <= 28)
     return [
-      { service: 'PAC',   company: 'Correios', priceCents: 1800, days: 6 },
-      { service: 'SEDEX', company: 'Correios', priceCents: 3200, days: 2 },
+      { id: 1, service: 'PAC',   company: 'Correios', priceCents: 1800, days: 6 },
+      { id: 2, service: 'SEDEX', company: 'Correios', priceCents: 3200, days: 2 },
     ];
   if (region >= 80 && region <= 99)
     return [
-      { service: 'PAC',   company: 'Correios', priceCents: 2200, days: 7 },
-      { service: 'SEDEX', company: 'Correios', priceCents: 3800, days: 3 },
+      { id: 1, service: 'PAC',   company: 'Correios', priceCents: 2200, days: 7 },
+      { id: 2, service: 'SEDEX', company: 'Correios', priceCents: 3800, days: 3 },
     ];
   if (region >= 40 && region <= 79)
     return [
-      { service: 'PAC',   company: 'Correios', priceCents: 2800, days: 10 },
-      { service: 'SEDEX', company: 'Correios', priceCents: 5200, days: 4  },
+      { id: 1, service: 'PAC',   company: 'Correios', priceCents: 2800, days: 10 },
+      { id: 2, service: 'SEDEX', company: 'Correios', priceCents: 5200, days: 4  },
     ];
   return [
-    { service: 'PAC',   company: 'Correios', priceCents: 2000, days: 7 },
-    { service: 'SEDEX', company: 'Correios', priceCents: 3500, days: 3 },
+    { id: 1, service: 'PAC',   company: 'Correios', priceCents: 2000, days: 7 },
+    { id: 2, service: 'SEDEX', company: 'Correios', priceCents: 3500, days: 3 },
   ];
 }
 
@@ -123,6 +124,7 @@ export class ShippingService {
       const options = quotes
         .filter((q) => q.price && !q.error)
         .map((q) => ({
+          id:         q.id,
           service:    q.name,
           company:    q.company.name,
           priceCents: Math.round(parseFloat(q.price!) * SHIPPING_MARKUP * 100),

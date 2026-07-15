@@ -7,9 +7,10 @@ import { ShippingModule } from '../shipping/shipping.module';
 import { UsersModule } from '../users/users.module';
 import { DeveloperEarningsModule } from '../developer-earnings/developer-earnings.module';
 import { FiscalModule } from '../fiscal/fiscal.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
-  imports:     [DynamoDbModule, ShippingModule, UsersModule, DeveloperEarningsModule, FiscalModule],
+  imports:     [DynamoDbModule, ShippingModule, UsersModule, DeveloperEarningsModule, FiscalModule, NotificationsModule],
   controllers: [PaymentsController],
   providers:   [PaymentsService, PagarmeService],
   exports:     [PaymentsService],

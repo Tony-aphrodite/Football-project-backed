@@ -240,6 +240,15 @@ export class UsersService {
     return toPublic({ ...u, sellerCep: cleaned, sellerRua: rua, sellerNumero: numero, sellerCidade: cidade, sellerEstado: estado });
   }
 
+  async updatePushToken(userId: string, token: string): Promise<void> {
+    const u = await this.getById(userId);
+    await this.db.update({
+      Key: { PK: u.PK, SK: u.SK },
+      UpdateExpression: 'SET expoPushToken = :t, updatedAt = :now',
+      ExpressionAttributeValues: { ':t': token, ':now': new Date().toISOString() },
+    });
+  }
+
   // ── private helpers ────────────────────────────────────────────────────────
 
   private async findByLookup(lookupPk: string): Promise<UserRecord | undefined> {

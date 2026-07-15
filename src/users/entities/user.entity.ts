@@ -60,6 +60,8 @@ export interface UserRecord {
   totpSecret?: string;         // stored only after activation
   totpPendingSecret?: string;  // temporary during setup, removed on activation
 
+  expoPushToken?: string;
+
   status: UserStatus;
   createdAt: string;
   updatedAt: string;
