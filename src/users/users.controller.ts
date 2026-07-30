@@ -59,7 +59,7 @@ export class UsersController {
   }
 
   @UseGuards(JwtAuthGuard)
-  @Patch('me/dados-pessoais')
+  @Post('me/dados-pessoais')
   async updateDadosPessoais(@Body() dto: UpdateDadosPessoaisDto, @Request() req: { user: JwtPayload }) {
     try {
       return await this.users.updateDadosPessoais(req.user.sub, { nomeCompleto: dto.nomeCompleto, email: dto.email });
@@ -70,7 +70,7 @@ export class UsersController {
   }
 
   @UseGuards(JwtAuthGuard)
-  @Patch('me/financeiro/bank')
+  @Post('me/financeiro/bank')
   async updateBankData(@Body() dto: UpdateBankDto, @Request() req: { user: JwtPayload }) {
     try {
       return await this.users.updateBankData(req.user.sub, dto, this.pagarme);
