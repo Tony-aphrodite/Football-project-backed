@@ -251,7 +251,8 @@ export class UsersService {
     const now = new Date().toISOString();
     await this.db.update({
       Key: { PK: u.PK, SK: u.SK },
-      UpdateExpression: 'SET nomeCompleto = :n, email = :e, dadosPessoaisLockedAt = :l, updatedAt = :now',
+      UpdateExpression: 'SET nomeCompleto = :n, #em = :e, dadosPessoaisLockedAt = :l, updatedAt = :now',
+      ExpressionAttributeNames: { '#em': 'email' },
       ExpressionAttributeValues: {
         ':n': data.nomeCompleto,
         ':e': data.email,
