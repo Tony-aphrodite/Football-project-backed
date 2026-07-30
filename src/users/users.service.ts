@@ -320,6 +320,12 @@ export class UsersService {
     return pagarme.createWithdrawal(u.pagarmeRecipientId, amountCents);
   }
 
+  async getWithdrawalHistory(userId: string, pagarme: import('../payments/pagarme.service').PagarmeService): Promise<{ id: string; status: string; amount: number; createdAt: string }[]> {
+    const u = await this.getById(userId);
+    if (!u.pagarmeRecipientId) return [];
+    return pagarme.getWithdrawals(u.pagarmeRecipientId);
+  }
+
   async updatePushToken(userId: string, token: string): Promise<void> {
     const u = await this.getById(userId);
     await this.db.update({

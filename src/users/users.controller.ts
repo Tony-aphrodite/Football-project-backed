@@ -89,6 +89,12 @@ export class UsersController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Get('me/financeiro/withdrawals')
+  getWithdrawals(@Request() req: { user: JwtPayload }) {
+    return this.users.getWithdrawalHistory(req.user.sub, this.pagarme);
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Post('me/financeiro/sacar')
   async sacar(@Body() dto: SacarDto, @Request() req: { user: JwtPayload }) {
     return this.users.requestWithdrawal(req.user.sub, dto.amountCents, this.pagarme);

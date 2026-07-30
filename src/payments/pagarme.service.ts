@@ -303,6 +303,19 @@ export class PagarmeService {
     return this.request('POST', `/recipients/${recipientId}/withdrawals`, { amount: amountCents });
   }
 
+  /** Fetches withdrawal history for a recipient (most recent first, up to 20). */
+  async getWithdrawals(recipientId: string): Promise<{ id: string; status: string; amount: number; createdAt: string }[]> {
+    const data = await this.request<{
+      data: { id: string; status: string; amount: number; created_at: string }[];
+    }>('GET', `/recipients/${recipientId}/withdrawals?page=1&size=20`);
+    return (data.data ?? []).map((w) => ({
+      id:        w.id,
+      status:    w.status,
+      amount:    w.amount,
+      createdAt: w.created_at,
+    }));
+  }
+
   /** Fetches a Pagar.me order by its Pagar.me order ID. */
   async getOrder(pagarmeOrderId: string): Promise<PagarmeOrder> {
     return this.request<PagarmeOrder>('GET', `/orders/${pagarmeOrderId}`);
