@@ -62,6 +62,18 @@ export interface UserRecord {
 
   expoPushToken?: string;
 
+  // Personal data (Dados Pessoais) — locked after first save
+  nomeCompleto?: string;
+  dadosPessoaisLockedAt?: string;  // ISO timestamp; set when user saves for the first time
+
+  // Bank account (Financeiro) — locked after first save
+  bankCode?: string;          // e.g. "033"
+  bankAgency?: string;        // branch number without digit
+  bankAgencyDigit?: string;
+  bankAccount?: string;       // account number without digit
+  bankAccountDigit?: string;
+  bankLockedAt?: string;      // ISO timestamp; set when user saves bank data
+
   status: UserStatus;
   createdAt: string;
   updatedAt: string;
@@ -80,6 +92,14 @@ export interface UserPublic {
   sellerEstado?:  string;
   pagarmeRecipientId?: string;
   lgpdConsentAt?: string;
+  nomeCompleto?: string;
+  dadosPessoaisLockedAt?: string;
+  bankCode?: string;
+  bankAgency?: string;
+  bankAgencyDigit?: string;
+  bankAccount?: string;
+  bankAccountDigit?: string;
+  bankLockedAt?: string;
   ratingAvgAsSeller?: number;
   ratingCountAsSeller: number;
   ratingAvgAsBuyer?: number;
@@ -105,6 +125,14 @@ export function toPublic(u: UserRecord): UserPublic {
     sellerEstado:  u.sellerEstado,
     pagarmeRecipientId: u.pagarmeRecipientId,
     lgpdConsentAt:      u.lgpdConsentAt,
+    nomeCompleto:       u.nomeCompleto,
+    dadosPessoaisLockedAt: u.dadosPessoaisLockedAt,
+    bankCode:          u.bankCode,
+    bankAgency:        u.bankAgency,
+    bankAgencyDigit:   u.bankAgencyDigit,
+    bankAccount:       u.bankAccount,
+    bankAccountDigit:  u.bankAccountDigit,
+    bankLockedAt:      u.bankLockedAt,
     ratingAvgAsSeller: u.ratingAvgAsSeller,
     ratingCountAsSeller: u.ratingCountAsSeller,
     ratingAvgAsBuyer: u.ratingAvgAsBuyer,

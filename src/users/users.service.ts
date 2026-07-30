@@ -240,6 +240,85 @@ export class UsersService {
     return toPublic({ ...u, sellerCep: cleaned, sellerRua: rua, sellerNumero: numero, sellerCidade: cidade, sellerEstado: estado });
   }
 
+  async updateDadosPessoais(userId: string, data: {
+    nomeCompleto: string;
+    email: string;
+    phoneE164?: string;
+    cpf?: string;
+  }): Promise<UserPublic> {
+    const u = await this.getById(userId);
+    if (u.dadosPessoaisLockedAt) throw new Error('LOCKED');
+    const now = new Date().toISOString();
+    await this.db.update({
+      Key: { PK: u.PK, SK: u.SK },
+      UpdateExpression: 'SET nomeCompleto = :n, email = :e, dadosPessoaisLockedAt = :l, updatedAt = :now',
+      ExpressionAttributeValues: {
+        ':n': data.nomeCompleto,
+        ':e': data.email,
+        ':l': now,
+        ':now': now,
+      },
+    });
+    return toPublic({ ...u, nomeCompleto: data.nomeCompleto, email: data.email, dadosPessoaisLockedAt: now });
+  }
+
+  async updateBankData(userId: string, data: {
+    bankCode: string;
+    bankAgency: string;
+    bankAgencyDigit?: string;
+    bankAccount: string;
+    bankAccountDigit: string;
+  }, pagarme: import('../payments/pagarme.service').PagarmeService): Promise<UserPublic> {
+    const u = await this.getById(userId);
+    if (u.bankLockedAt) throw new Error('LOCKED');
+    if (!u.nomeCompleto || !u.email || !u.cpf) throw new Error('Complete Dados Pessoais first');
+
+    const recipient = await pagarme.createRecipient({
+      name: u.nomeCompleto,
+      cpf: u.cpf,
+      email: u.email,
+      bankCode: data.bankCode,
+      bankAgency: data.bankAgency,
+      bankAgencyDigit: data.bankAgencyDigit,
+      bankAccount: data.bankAccount,
+      bankAccountDigit: data.bankAccountDigit,
+    });
+
+    const now = new Date().toISOString();
+    await this.db.update({
+      Key: { PK: u.PK, SK: u.SK },
+      UpdateExpression: [
+        'SET bankCode = :bc, bankAgency = :ba, bankAgencyDigit = :bad,',
+        'bankAccount = :bac, bankAccountDigit = :bacd,',
+        'bankLockedAt = :l, pagarmeRecipientId = :r, updatedAt = :now',
+      ].join(' '),
+      ExpressionAttributeValues: {
+        ':bc':   data.bankCode,
+        ':ba':   data.bankAgency,
+        ':bad':  data.bankAgencyDigit ?? '',
+        ':bac':  data.bankAccount,
+        ':bacd': data.bankAccountDigit,
+        ':l':    now,
+        ':r':    recipient.id,
+        ':now':  now,
+      },
+    });
+    return toPublic({ ...u, ...data, bankLockedAt: now, pagarmeRecipientId: recipient.id });
+  }
+
+  async getFinanceiroBalance(userId: string, pagarme: import('../payments/pagarme.service').PagarmeService): Promise<{ available: number; waitingFunds: number; hasRecipient: boolean }> {
+    const u = await this.getById(userId);
+    if (!u.pagarmeRecipientId) return { available: 0, waitingFunds: 0, hasRecipient: false };
+    const bal = await pagarme.getRecipientBalance(u.pagarmeRecipientId);
+    return { ...bal, hasRecipient: true };
+  }
+
+  async requestWithdrawal(userId: string, amountCents: number, pagarme: import('../payments/pagarme.service').PagarmeService): Promise<{ id: string; status: string; amount: number }> {
+    const u = await this.getById(userId);
+    if (!u.pagarmeRecipientId) throw new Error('No recipient registered');
+    return pagarme.createWithdrawal(u.pagarmeRecipientId, amountCents);
+  }
+
   async updatePushToken(userId: string, token: string): Promise<void> {
     const u = await this.getById(userId);
     await this.db.update({

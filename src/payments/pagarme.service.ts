@@ -252,8 +252,11 @@ export class PagarmeService {
     name: string;
     cpf: string;
     email: string;
-    pixKey: string;
-    pixKeyType: 'cpf' | 'email' | 'phone' | 'random';
+    bankCode: string;
+    bankAgency: string;
+    bankAgencyDigit?: string;
+    bankAccount: string;
+    bankAccountDigit: string;
   }): Promise<{ id: string; status: string }> {
     return this.request('POST', '/recipients', {
       name: params.name,
@@ -266,11 +269,11 @@ export class PagarmeService {
         holder_name: params.name,
         holder_type: 'individual',
         holder_document: params.cpf.replace(/\D/g, ''),
-        bank: '000',
-        branch_number: '0001',
-        branch_check_digit: '0',
-        account_number: '00000000',
-        account_check_digit: '0',
+        bank: params.bankCode,
+        branch_number: params.bankAgency,
+        branch_check_digit: params.bankAgencyDigit ?? '0',
+        account_number: params.bankAccount,
+        account_check_digit: params.bankAccountDigit,
         type: 'checking',
       },
       transfer_settings: {
@@ -285,6 +288,19 @@ export class PagarmeService {
         delay: null,
       },
     });
+  }
+
+  /** Fetches available balance for a recipient. Returns amount in cents. */
+  async getRecipientBalance(recipientId: string): Promise<{ available: number; waitingFunds: number }> {
+    const data = await this.request<{ available: { amount: number }; waiting_funds: { amount: number } }>(
+      'GET', `/recipients/${recipientId}/balance`,
+    );
+    return { available: data.available.amount, waitingFunds: data.waiting_funds.amount };
+  }
+
+  /** Requests a withdrawal for a recipient. */
+  async createWithdrawal(recipientId: string, amountCents: number): Promise<{ id: string; status: string; amount: number }> {
+    return this.request('POST', `/recipients/${recipientId}/withdrawals`, { amount: amountCents });
   }
 
   /** Fetches a Pagar.me order by its Pagar.me order ID. */
