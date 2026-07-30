@@ -271,7 +271,7 @@ export class PagarmeService {
         holder_document: params.cpf.replace(/\D/g, ''),
         bank: params.bankCode,
         branch_number: params.bankAgency,
-        branch_check_digit: params.bankAgencyDigit ?? '0',
+        branch_check_digit: params.bankAgencyDigit || '0',
         account_number: params.bankAccount,
         account_check_digit: params.bankAccountDigit,
         type: 'checking',
