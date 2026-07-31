@@ -31,6 +31,19 @@ export function VerifyPhoneProfileScreen({ navigation }: Props) {
   const e164 = useMemo(() => toBrazilianE164(phoneRaw), [phoneRaw]);
   const phoneValid = e164 !== null && isValidE164(e164);
 
+  const friendlyError = (err: unknown): string => {
+    if (!(err instanceof AxiosError)) return 'Verifique sua conexão e tente novamente.';
+    const status = err.response?.status;
+    if (!status) return 'Sem conexão com o servidor. Tente novamente.';
+    if (status === 503) return 'Serviço temporariamente indisponível. Tente novamente mais tarde ou entre em contato com o suporte.';
+    if (status === 400) {
+      const msg = err.response?.data?.message;
+      return typeof msg === 'string' ? msg : 'Número de telefone inválido.';
+    }
+    if (status === 409) return 'Este número já está vinculado a outra conta.';
+    return `Erro inesperado (${status}). Tente novamente.`;
+  };
+
   const onSendCode = async () => {
     if (!phoneValid) return;
     setBusy(true);
@@ -38,13 +51,7 @@ export function VerifyPhoneProfileScreen({ navigation }: Props) {
       await AuthApi.startPhoneVerification(e164!);
       setStep('enter-code');
     } catch (err) {
-      let detail = '';
-      if (err instanceof AxiosError) {
-        const status = err.response?.status;
-        const msg = err.response?.data?.message ?? err.message;
-        detail = `\n[${status ?? 'rede'}] ${typeof msg === 'string' ? msg : JSON.stringify(msg)}`;
-      }
-      Alert.alert('Erro', `Não foi possível enviar o código.${detail}`);
+      Alert.alert('Erro ao enviar código', friendlyError(err));
     } finally {
       setBusy(false);
     }
@@ -58,13 +65,7 @@ export function VerifyPhoneProfileScreen({ navigation }: Props) {
       await setSession(session);
       navigation.goBack();
     } catch (err) {
-      let detail = '';
-      if (err instanceof AxiosError) {
-        const status = err.response?.status;
-        const msg = err.response?.data?.message ?? err.message;
-        detail = `\n[${status ?? 'rede'}] ${typeof msg === 'string' ? msg : JSON.stringify(msg)}`;
-      }
-      Alert.alert('Código inválido', `O código está incorreto ou expirou.${detail}`);
+      Alert.alert('Código inválido', 'O código está incorreto ou expirou. Tente novamente.');
     } finally {
       setBusy(false);
     }
