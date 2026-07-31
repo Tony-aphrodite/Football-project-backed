@@ -6,6 +6,9 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Lock, User } from 'lucide-react-native';
 import { AxiosError } from 'axios';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { RootStackParamList } from '../../navigation/types';
 import { useAuthStore } from '../../store/auth.store';
 import { UsersApi } from '../../api/users';
 
@@ -49,6 +52,7 @@ function Field({ label, value, onChangeText, locked, placeholder, keyboardType, 
 
 export function DadosPessoaisScreen() {
   const user = useAuthStore((s) => s.user);
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
 
   const isLocked = !!user?.dadosPessoaisLockedAt;
 
@@ -124,6 +128,16 @@ export function DadosPessoaisScreen() {
           locked
           placeholder="Não informado"
         />
+        {!user?.phoneE164 && (
+          <Pressable
+            onPress={() => navigation.navigate('VerifyPhone')}
+            style={{ marginTop: -8, marginBottom: 16, alignSelf: 'flex-start' }}
+          >
+            <Text style={{ color: '#D4AF37', fontSize: 13, fontWeight: '600' }}>
+              + Adicionar telefone
+            </Text>
+          </Pressable>
+        )}
 
         <Field
           label="CPF"
