@@ -122,14 +122,14 @@ export function DadosPessoaisScreen() {
           label="TELEFONE"
           value={fmtPhone(user?.phoneE164)}
           locked
-          placeholder="—"
+          placeholder="Não informado"
         />
 
         <Field
           label="CPF"
           value={maskCpf(user?.cpf)}
           locked
-          placeholder="—"
+          placeholder="Não informado"
         />
 
         {/* Warning */}
