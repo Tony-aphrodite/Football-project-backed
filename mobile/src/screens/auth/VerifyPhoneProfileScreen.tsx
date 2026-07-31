@@ -10,6 +10,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { AxiosError } from 'axios';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../navigation/types';
 import { AuthApi } from '../../api/auth';
@@ -36,8 +37,14 @@ export function VerifyPhoneProfileScreen({ navigation }: Props) {
     try {
       await AuthApi.startPhoneVerification(e164!);
       setStep('enter-code');
-    } catch {
-      Alert.alert('Erro', 'Não foi possível enviar o código. Verifique sua conexão.');
+    } catch (err) {
+      let detail = '';
+      if (err instanceof AxiosError) {
+        const status = err.response?.status;
+        const msg = err.response?.data?.message ?? err.message;
+        detail = `\n[${status ?? 'rede'}] ${typeof msg === 'string' ? msg : JSON.stringify(msg)}`;
+      }
+      Alert.alert('Erro', `Não foi possível enviar o código.${detail}`);
     } finally {
       setBusy(false);
     }
@@ -50,8 +57,14 @@ export function VerifyPhoneProfileScreen({ navigation }: Props) {
       const session = await AuthApi.verifyPhone(e164!, code);
       await setSession(session);
       navigation.goBack();
-    } catch {
-      Alert.alert('Código inválido', 'O código está incorreto ou expirou. Tente novamente.');
+    } catch (err) {
+      let detail = '';
+      if (err instanceof AxiosError) {
+        const status = err.response?.status;
+        const msg = err.response?.data?.message ?? err.message;
+        detail = `\n[${status ?? 'rede'}] ${typeof msg === 'string' ? msg : JSON.stringify(msg)}`;
+      }
+      Alert.alert('Código inválido', `O código está incorreto ou expirou.${detail}`);
     } finally {
       setBusy(false);
     }
