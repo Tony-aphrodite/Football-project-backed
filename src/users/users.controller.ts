@@ -47,6 +47,14 @@ export class UsersController {
   ) {}
 
   @UseGuards(JwtAuthGuard)
+  @Get('me')
+  async getMe(@Request() req: { user: JwtPayload }) {
+    const u = await this.users.getById(req.user.sub);
+    const { toPublic } = await import('./entities/user.entity');
+    return toPublic(u);
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Patch('me/cep')
   updateCep(@Body() dto: UpdateCepDto, @Request() req: { user: JwtPayload }) {
     return this.users.updateSellerCep(req.user.sub, dto.cep, dto.rua, dto.numero, dto.cidade, dto.estado);
