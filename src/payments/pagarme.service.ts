@@ -292,10 +292,13 @@ export class PagarmeService {
 
   /** Fetches available balance for a recipient. Returns amount in cents. */
   async getRecipientBalance(recipientId: string): Promise<{ available: number; waitingFunds: number }> {
-    const data = await this.request<{ available: { amount: number }; waiting_funds: { amount: number } }>(
+    const data = await this.request<{ available?: { amount?: number }; waiting_funds?: { amount?: number } }>(
       'GET', `/recipients/${recipientId}/balance`,
     );
-    return { available: data.available.amount, waitingFunds: data.waiting_funds.amount };
+    return {
+      available:    data.available?.amount    ?? 0,
+      waitingFunds: data.waiting_funds?.amount ?? 0,
+    };
   }
 
   /** Requests a withdrawal for a recipient. */
