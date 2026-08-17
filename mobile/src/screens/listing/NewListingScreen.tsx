@@ -13,16 +13,17 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { webAlert } from '../../utils/webAlert';
+import { webAlert, webConfirm } from '../../utils/webAlert';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
+import type { NavigationProp } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
 
 import { Camera, X } from 'lucide-react-native';
 
 import { ListingsApi, type JerseyImageResult } from '../../api/listings';
 import { useAuthStore } from '../../store/auth.store';
-import type { MainTabParamList } from '../../navigation/types';
+import type { MainTabParamList, RootStackParamList } from '../../navigation/types';
 
 const MAX_PHOTOS = 8;
 
@@ -329,8 +330,10 @@ export function NewListingScreen() {
   const skuTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scrollRef               = useRef<ScrollView>(null);
   const submittedRef            = useRef(false);
+  const currentUser             = useAuthStore((s) => s.user);
   const setListingsCount        = useAuthStore((s) => s.setListingsActiveCount);
   const nav                     = useNavigation<BottomTabNavigationProp<MainTabParamList>>();
+  const rootNav                 = useNavigation<NavigationProp<RootStackParamList>>();
 
   // Reset form when returning to this tab after a successful submission
   useFocusEffect(
@@ -438,6 +441,16 @@ export function NewListingScreen() {
   const missingCount = Object.values(errors).filter(Boolean).length;
 
   const onSubmit = async () => {
+    if (!currentUser?.cpf) {
+      webConfirm(
+        'CPF necessário',
+        'Para publicar um anúncio, preencha seu CPF em Dados Pessoais antes de continuar.',
+        () => rootNav.navigate('DadosPessoais'),
+        undefined,
+        'Ir para Dados Pessoais',
+      );
+      return;
+    }
     if (hasErrors) {
       setAttempted(true);
       scrollRef.current?.scrollTo({ y: 0, animated: true });

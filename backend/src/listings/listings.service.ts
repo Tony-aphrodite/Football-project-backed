@@ -60,8 +60,9 @@ export class ListingsService {
   async create(sellerId: string, dto: CreateListingDto): Promise<{ listing: ListingPublic; listingsActiveCount: number }> {
     // Enforce cap atomically via conditional update on the user profile.
     const userKey = Keys.user(sellerId);
-    const userItem = await this.db.get<{ listingsActiveCount: number; displayName: string; email?: string }>(userKey.PK, userKey.SK);
+    const userItem = await this.db.get<{ listingsActiveCount: number; displayName: string; email?: string; cpf?: string }>(userKey.PK, userKey.SK);
     if (!userItem) throw new NotFoundException('User not found');
+    if (!userItem.cpf) throw new BadRequestException('CPF obrigatório para anunciar. Preencha em Dados Pessoais.');
     const effectiveCap = getEffectiveCap(userItem.email);
     if (userItem.listingsActiveCount >= effectiveCap) {
       throw new BadRequestException(`Limite de ${effectiveCap} anúncios atingido`);

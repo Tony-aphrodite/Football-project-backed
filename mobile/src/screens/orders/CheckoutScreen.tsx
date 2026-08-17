@@ -16,7 +16,8 @@ import type { RootStackParamList } from '../../navigation/types';
 import { OrdersApi, type DeliveryMethod, type ShippingOption } from '../../api/orders';
 import { PaymentsApi } from '../../api/payments';
 import { CouponsApi, type RedeemResult } from '../../api/coupons';
-import { webAlert } from '../../utils/webAlert';
+import { webAlert, webConfirm } from '../../utils/webAlert';
+import { useAuthStore } from '../../store/auth.store';
 
 type PaymentMethod = 'PIX' | 'CREDIT_CARD';
 
@@ -39,6 +40,7 @@ const CONDITION_LABEL: Record<string, string> = {
 
 export function CheckoutScreen({ route, navigation }: Props) {
   const { listing } = route.params;
+  const currentUser = useAuthStore((s) => s.user);
 
   const [deliveryMethod, setDeliveryMethod] = useState<DeliveryMethod>('CORREIOS');
   const [buyerCep, setBuyerCep]             = useState('');
@@ -139,6 +141,16 @@ export function CheckoutScreen({ route, navigation }: Props) {
   const canProceed = (deliveryMethod === 'ENTREGA_EM_MAOS' || selectedShipping !== null) && cardValid;
 
   const handlePay = async () => {
+    if (!currentUser?.cpf) {
+      webConfirm(
+        'CPF necessário',
+        'Para realizar uma compra, preencha seu CPF em Dados Pessoais.',
+        () => navigation.navigate('DadosPessoais'),
+        undefined,
+        'Ir para Dados Pessoais',
+      );
+      return;
+    }
     if (!canProceed) {
       webAlert('Atenção', deliveryMethod === 'CORREIOS' && !selectedShipping
         ? 'Selecione uma opção de frete primeiro.'
