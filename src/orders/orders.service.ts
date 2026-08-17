@@ -32,8 +32,9 @@ export class OrdersService {
   async create(buyerId: string, dto: CreateOrderDto): Promise<OrderPublic> {
     // Fetch buyer
     const buyerKey = Keys.user(buyerId);
-    const buyer = await this.db.get<{ displayName: string }>(buyerKey.PK, buyerKey.SK);
+    const buyer = await this.db.get<{ displayName: string; cpf?: string }>(buyerKey.PK, buyerKey.SK);
     if (!buyer) throw new NotFoundException('Buyer not found');
+    if (!buyer.cpf) throw new BadRequestException('CPF obrigatório para realizar uma compra. Preencha em Dados Pessoais.');
 
     // Fetch listing
     const listingKey = Keys.listing(dto.listingId);
