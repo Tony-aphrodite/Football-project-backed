@@ -25,6 +25,7 @@
     "@nestjs/jwt": "^10.2.0",
     "@nestjs/passport": "^10.0.3",
     "@nestjs/platform-express": "^10.4.0",
+    "@nestjs/schedule": "^6.1.3",
     "@nestjs/throttler": "^6.2.0",
     "@types/bcrypt": "^6.0.0",
     "algoliasearch": "^5.52.1",
