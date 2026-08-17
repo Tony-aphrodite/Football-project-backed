@@ -940,6 +940,42 @@ export function NewListingScreen() {
         />
         {e.price && <FieldError message="Digite um preço válido (mín. R$ 1,00)" />}
 
+        {/* Fee disclosure — live payout simulation */}
+        {(() => {
+          const v = parseFloat(form.priceText.replace(',', '.'));
+          if (!form.priceText || isNaN(v) || v < 1) return null;
+          const fee = v * 0.07;
+          const net = v * 0.93;
+          const fmt = (n: number) => n.toFixed(2).replace('.', ',');
+          return (
+            <View style={{
+              marginTop: 8, padding: 14, borderRadius: 12,
+              backgroundColor: 'rgba(212,175,55,0.08)',
+              borderWidth: 1, borderColor: 'rgba(212,175,55,0.25)',
+            }}>
+              <Text style={{ color: '#D4AF37', fontSize: 12, fontWeight: '700', marginBottom: 8, letterSpacing: 0.5 }}>
+                SIMULAÇÃO DE REPASSE
+              </Text>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: 13 }}>Preço anunciado</Text>
+                <Text style={{ color: '#EAEAEA', fontSize: 13, fontWeight: '600' }}>R$ {fmt(v)}</Text>
+              </View>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: 13 }}>Comissão Arena (7%)</Text>
+                <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 13 }}>− R$ {fmt(fee)}</Text>
+              </View>
+              <View style={{ height: 1, backgroundColor: 'rgba(212,175,55,0.2)', marginVertical: 8 }} />
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                <Text style={{ color: '#D4AF37', fontSize: 14, fontWeight: '700' }}>Você recebe (via Pix)</Text>
+                <Text style={{ color: '#D4AF37', fontSize: 14, fontWeight: '700' }}>R$ {fmt(net)}</Text>
+              </View>
+              <Text style={{ color: 'rgba(255,255,255,0.4)', fontSize: 11, marginTop: 8, lineHeight: 16 }}>
+                Pagamentos por cartão de crédito têm taxa adicional do processador (até 4%). Via Pix, você recebe exatamente o valor acima.
+              </Text>
+            </View>
+          );
+        })()}
+
         {/* Descrição */}
         <SectionTitle text="DESCRIÇÃO / OBSERVAÇÕES (opcional)" />
         <TextInput

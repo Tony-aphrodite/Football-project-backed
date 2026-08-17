@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { ulid } from 'ulid';
@@ -19,6 +20,8 @@ import { UsersService } from '../users/users.service';
 
 @Injectable()
 export class OrdersService {
+  private readonly logger = new Logger(OrdersService.name);
+
   constructor(
     private readonly db:            DynamoDbService,
     private readonly shipping:      ShippingService,
@@ -41,18 +44,12 @@ export class OrdersService {
 
     // Fetch seller
     const sellerKey = Keys.user(listing.sellerId);
-    const seller = await this.db.get<{ displayName: string; cep?: string }>(sellerKey.PK, sellerKey.SK);
+    const seller = await this.db.get<{ displayName: string; sellerCep?: string }>(sellerKey.PK, sellerKey.SK);
     const sellerName = seller?.displayName ?? 'Vendedor';
-    const sellerCep  = seller?.cep;
+    const sellerCep  = seller?.sellerCep;
 
-    // Compute shipping
-    let shippingCents = 0;
-    if (dto.deliveryMethod === 'CORREIOS') {
-      const cepDigits = (dto.buyerCep ?? '00000').replace(/\D/g, '');
-      const prefix    = parseInt(cepDigits.slice(0, 5), 10);
-      shippingCents   = prefix % 3 === 0 ? 1500
-        : (parseInt(cepDigits.slice(0, 2), 10) > 50 ? 2200 : 3000);
-    }
+    // Use the shipping price the buyer saw at checkout; fall back to 0 for Em Mãos
+    const shippingCents = dto.deliveryMethod === 'CORREIOS' ? (dto.shippingCents ?? 0) : 0;
 
     // Apply coupon discount if provided
     let discountPct   = 0;
@@ -231,10 +228,19 @@ export class OrdersService {
     const now = new Date().toISOString();
     await this.db.update({
       Key:                       { PK: k.PK, SK: k.SK },
-      UpdateExpression:          'SET #s = :delivered, updatedAt = :now',
+      UpdateExpression:          'SET #s = :delivered, escrowReleaseAt = :now, updatedAt = :now',
       ExpressionAttributeNames:  { '#s': 'status' },
       ExpressionAttributeValues: { ':delivered': 'DELIVERED', ':now': now },
     });
+
+    // Notify seller that buyer confirmed
+    const seller = await this.users.findById(order.sellerId).catch(() => null);
+    void this.notifications.send(
+      seller?.expoPushToken,
+      '✅ Recebimento confirmado!',
+      `${order.buyerName} confirmou o recebimento de ${order.teamName}. Pagamento sendo processado.`,
+      { orderId: order.orderId, screen: 'OrderDetail' },
+    );
   }
 
   async addTracking(sellerId: string, orderId: string, correiosTracking: string): Promise<OrderPublic> {
@@ -247,13 +253,16 @@ export class OrdersService {
     }
 
     const now = new Date().toISOString();
+    // Reset escrow window to 7 days from actual ship date (seller may ship days after payment)
+    const escrowReleaseAt = new Date(Date.now() + 7 * 24 * 3_600_000).toISOString();
     await this.db.update({
       Key:                       { PK: k.PK, SK: k.SK },
-      UpdateExpression:          'SET correiosTracking = :tracking, #s = :shipped, updatedAt = :now',
+      UpdateExpression:          'SET correiosTracking = :tracking, #s = :shipped, escrowReleaseAt = :era, updatedAt = :now',
       ExpressionAttributeNames:  { '#s': 'status' },
       ExpressionAttributeValues: {
         ':tracking': correiosTracking.toUpperCase(),
         ':shipped':  'SHIPPED',
+        ':era':      escrowReleaseAt,
         ':now':      now,
       },
     });
@@ -270,6 +279,90 @@ export class OrdersService {
     );
 
     return updated;
+  }
+
+  async disputeOrder(buyerId: string, orderId: string, reason: string): Promise<void> {
+    const k = Keys.order(orderId);
+    const order = await this.db.get<OrderRecord>(k.PK, k.SK);
+    if (!order) throw new NotFoundException('Order not found');
+    if (order.buyerId !== buyerId) throw new ForbiddenException('Not your order');
+    if (!['PAID', 'SHIPPED', 'DELIVERED'].includes(order.status)) {
+      throw new BadRequestException('Dispute cannot be opened in the current order status');
+    }
+
+    const now = new Date().toISOString();
+    await this.db.update({
+      Key:                       { PK: k.PK, SK: k.SK },
+      UpdateExpression:          'SET #s = :disputed, disputedAt = :now, disputeReason = :reason, escrowReleaseAt = :far, updatedAt = :now',
+      ExpressionAttributeNames:  { '#s': 'status' },
+      ExpressionAttributeValues: {
+        ':disputed': 'DISPUTED',
+        ':now':      now,
+        ':reason':   reason,
+        ':far':      '2099-12-31T23:59:59.000Z',
+      },
+    });
+
+    const seller = await this.users.findById(order.sellerId).catch(() => null);
+    void this.notifications.send(
+      seller?.expoPushToken,
+      '⚠️ Problema reportado no pedido',
+      `O comprador abriu uma disputa no pedido #${orderId.slice(-8).toUpperCase()}. Nossa equipe entrará em contato.`,
+      { orderId, screen: 'OrderDetail' },
+    );
+  }
+
+  async runAutoRelease(): Promise<void> {
+    const now = new Date().toISOString();
+    let released = 0;
+
+    const candidates = await this.db.scan<OrderRecord>({
+      FilterExpression:          '#s IN (:paid, :shipped, :delivered) AND escrowReleaseAt <= :now',
+      ExpressionAttributeNames:  { '#s': 'status' },
+      ExpressionAttributeValues: { ':paid': 'PAID', ':shipped': 'SHIPPED', ':delivered': 'DELIVERED', ':now': now },
+    });
+
+    for (const order of candidates) {
+      try {
+        const k = Keys.order(order.orderId);
+        await this.db.update({
+          Key:                       { PK: k.PK, SK: k.SK },
+          UpdateExpression:          'SET #s = :completed, updatedAt = :now',
+          ConditionExpression:       '#s IN (:paid, :shipped, :delivered)',
+          ExpressionAttributeNames:  { '#s': 'status' },
+          ExpressionAttributeValues: {
+            ':completed': 'COMPLETED',
+            ':paid':      'PAID',
+            ':shipped':   'SHIPPED',
+            ':delivered': 'DELIVERED',
+            ':now':       now,
+          },
+        });
+        released++;
+
+        const [buyer, seller] = await Promise.all([
+          this.users.findById(order.buyerId).catch(() => null),
+          this.users.findById(order.sellerId).catch(() => null),
+        ]);
+
+        void this.notifications.send(
+          seller?.expoPushToken,
+          '✅ Pagamento liberado!',
+          `O valor do pedido #${order.orderId.slice(-8).toUpperCase()} foi liberado para saque.`,
+          { orderId: order.orderId, screen: 'OrderDetail' },
+        );
+        void this.notifications.send(
+          buyer?.expoPushToken,
+          '✅ Pedido concluído',
+          `Seu pedido de ${order.teamName} foi concluído com sucesso.`,
+          { orderId: order.orderId, screen: 'OrderDetail' },
+        );
+      } catch (err) {
+        this.logger.error(`Auto-release failed for order ${order.orderId}:`, err);
+      }
+    }
+
+    if (released > 0) this.logger.log(`Auto-released ${released} order(s)`);
   }
 
   async estimateShipping(dto: ShippingEstimateDto): Promise<ShippingOption[]> {

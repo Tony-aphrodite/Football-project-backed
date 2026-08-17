@@ -152,6 +152,7 @@ export function CheckoutScreen({ route, navigation }: Props) {
         deliveryMethod,
         buyerCep:          deliveryMethod === 'CORREIOS' ? buyerCep.replace(/\D/g, '') : undefined,
         shippingServiceId: deliveryMethod === 'CORREIOS' ? selectedShipping?.id : undefined,
+        shippingCents:     deliveryMethod === 'CORREIOS' ? (selectedShipping?.priceCents ?? 0) : 0,
         couponCode:        couponResult?.code,
       });
 

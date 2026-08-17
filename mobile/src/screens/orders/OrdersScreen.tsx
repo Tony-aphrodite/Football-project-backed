@@ -33,6 +33,7 @@ const STATUS_BADGE: Record<OrderStatus, StatusBadgeConfig> = {
   SHIPPED:         { bg: '#FED7AA', text: '#92400E', label: 'Enviado' },
   DELIVERED:       { bg: '#D1FAE5', text: '#065F46', label: 'Entregue' },
   COMPLETED:       { bg: '#FEF3C7', text: '#78350F', label: 'Concluído' },
+  DISPUTED:        { bg: '#FEE2E2', text: '#991B1B', label: 'Em disputa' },
   CANCELLED:       { bg: '#FEE2E2', text: '#991B1B', label: 'Cancelado' },
 };
 

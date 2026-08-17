@@ -33,6 +33,7 @@ const STEP_LABEL: Record<OrderStatus, string> = {
   SHIPPED:         'Enviado',
   DELIVERED:       'Entregue',
   COMPLETED:       'Concluído',
+  DISPUTED:        'Em disputa',
   CANCELLED:       'Cancelado',
 };
 
@@ -92,6 +93,9 @@ export function OrderDetailScreen({ route, navigation }: Props) {
   const [confirming, setConfirming] = useState(false);
   const [trackingInput, setTrackingInput] = useState('');
   const [savingTracking, setSavingTracking] = useState(false);
+  const [disputeReason, setDisputeReason] = useState('');
+  const [showDisputeInput, setShowDisputeInput] = useState(false);
+  const [disputing, setDisputing] = useState(false);
 
   const fetchOrder = () => {
     setLoading(true);
@@ -129,12 +133,48 @@ export function OrderDetailScreen({ route, navigation }: Props) {
     );
   };
 
+  const handleDispute = () => {
+    if (!disputeReason.trim()) return;
+    webConfirm(
+      'Abrir disputa',
+      'Você confirma que deseja reportar um problema com este pedido? Nossa equipe entrará em contato.',
+      async () => {
+        setDisputing(true);
+        try {
+          await OrdersApi.disputeOrder(orderId, disputeReason.trim());
+          setShowDisputeInput(false);
+          setDisputeReason('');
+          fetchOrder();
+        } catch {
+          webAlert('Erro', 'Não foi possível abrir a disputa. Tente novamente.');
+        } finally {
+          setDisputing(false);
+        }
+      },
+      undefined,
+      'Confirmar',
+    );
+  };
+
   const shortId = orderId.slice(-8).toUpperCase();
 
   const canConfirm =
     order !== null &&
     currentUser?.userId === order.buyerId &&
     (order.status === 'PAID' || order.status === 'SHIPPED');
+
+  const canDispute =
+    order !== null &&
+    currentUser?.userId === order.buyerId &&
+    ['PAID', 'SHIPPED', 'DELIVERED'].includes(order.status);
+
+  const daysUntilRelease = (() => {
+    if (!order?.escrowReleaseAt) return null;
+    if (!['PAID', 'SHIPPED', 'DELIVERED'].includes(order.status)) return null;
+    const ms = new Date(order.escrowReleaseAt).getTime() - Date.now();
+    if (ms <= 0) return 0;
+    return Math.ceil(ms / (1000 * 60 * 60 * 24));
+  })();
 
   const handleSaveTracking = async () => {
     if (!trackingInput.trim() || !order) return;
@@ -473,6 +513,23 @@ export function OrderDetailScreen({ route, navigation }: Props) {
 
           </ScrollView>
 
+          {/* Auto-release countdown — visible to buyer while escrow is pending */}
+          {daysUntilRelease !== null && order && currentUser?.userId === order.buyerId && (
+            <View style={{
+              backgroundColor: 'rgba(212,175,55,0.07)',
+              borderTopWidth: 1, borderColor: 'rgba(212,175,55,0.2)',
+              paddingHorizontal: 16, paddingVertical: 10,
+              flexDirection: 'row', alignItems: 'center', gap: 8,
+            }}>
+              <Text style={{ fontSize: 14 }}>⏱</Text>
+              <Text style={{ color: 'rgba(212,175,55,0.8)', fontSize: 12, flex: 1, lineHeight: 17 }}>
+                {daysUntilRelease === 0
+                  ? 'Pagamento sendo processado automaticamente.'
+                  : `Pagamento liberado automaticamente em ${daysUntilRelease} dia${daysUntilRelease !== 1 ? 's' : ''} se você não confirmar o recebimento.`}
+              </Text>
+            </View>
+          )}
+
           {/* Confirm receipt button — only for Correios/non-hand-delivery (hand-delivery has it inside the card) */}
           {canConfirm && order.deliveryMethod !== 'ENTREGA_EM_MAOS' && (
             <View style={{ backgroundColor: '#2a2a2a', borderTopWidth: 1, borderColor: 'rgba(255,255,255,0.1)', padding: 16, paddingBottom: 28 }}>
@@ -489,6 +546,80 @@ export function OrderDetailScreen({ route, navigation }: Props) {
                   : <Text style={{ color: '#211B15', fontWeight: '800', fontSize: 16 }}>Confirmar Recebimento</Text>
                 }
               </Pressable>
+            </View>
+          )}
+
+          {/* Dispute button — buyer can report a problem */}
+          {canDispute && !showDisputeInput && (
+            <View style={{ backgroundColor: '#2a2a2a', paddingHorizontal: 16, paddingBottom: canConfirm ? 4 : 28, paddingTop: canConfirm ? 0 : 12 }}>
+              <Pressable
+                onPress={() => setShowDisputeInput(true)}
+                style={({ pressed }) => ({
+                  borderWidth: 1, borderColor: 'rgba(255,80,80,0.4)',
+                  borderRadius: 12, paddingVertical: 10, alignItems: 'center',
+                  backgroundColor: pressed ? 'rgba(255,80,80,0.08)' : 'transparent',
+                })}
+              >
+                <Text style={{ color: 'rgba(255,100,100,0.85)', fontSize: 13, fontWeight: '600' }}>
+                  ⚠ Tive um problema com este pedido
+                </Text>
+              </Pressable>
+            </View>
+          )}
+
+          {/* Dispute input — inline form */}
+          {canDispute && showDisputeInput && (
+            <View style={{ backgroundColor: '#2a2a2a', borderTopWidth: 1, borderColor: 'rgba(255,80,80,0.25)', padding: 16, paddingBottom: 28 }}>
+              <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 13, marginBottom: 8 }}>
+                Descreva o problema com o pedido:
+              </Text>
+              <TextInput
+                value={disputeReason}
+                onChangeText={setDisputeReason}
+                placeholder="Ex: recebi o produto errado, não chegou..."
+                placeholderTextColor="rgba(255,255,255,0.3)"
+                multiline
+                numberOfLines={3}
+                style={{
+                  backgroundColor: '#1a1a1a', borderRadius: 10,
+                  borderWidth: 1, borderColor: 'rgba(255,80,80,0.3)',
+                  color: '#EAEAEA', fontSize: 13, padding: 12, marginBottom: 10,
+                  minHeight: 70, textAlignVertical: 'top',
+                }}
+              />
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <Pressable
+                  onPress={() => { setShowDisputeInput(false); setDisputeReason(''); }}
+                  style={{ flex: 1, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)', borderRadius: 10, paddingVertical: 11, alignItems: 'center' }}
+                >
+                  <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 13 }}>Cancelar</Text>
+                </Pressable>
+                <Pressable
+                  onPress={handleDispute}
+                  disabled={!disputeReason.trim() || disputing}
+                  style={({ pressed }) => ({
+                    flex: 2, borderRadius: 10, paddingVertical: 11, alignItems: 'center',
+                    backgroundColor: disputeReason.trim() ? (pressed ? 'rgba(200,50,50,0.9)' : 'rgba(200,50,50,0.8)') : 'rgba(100,50,50,0.4)',
+                  })}
+                >
+                  {disputing
+                    ? <ActivityIndicator color="#fff" size="small" />
+                    : <Text style={{ color: '#fff', fontWeight: '700', fontSize: 13 }}>Enviar disputa</Text>
+                  }
+                </Pressable>
+              </View>
+            </View>
+          )}
+
+          {/* Disputed status banner */}
+          {order?.status === 'DISPUTED' && currentUser?.userId === order.buyerId && (
+            <View style={{ backgroundColor: 'rgba(200,50,50,0.12)', borderTopWidth: 1, borderColor: 'rgba(200,50,50,0.3)', padding: 14, paddingBottom: 24 }}>
+              <Text style={{ color: 'rgba(255,120,120,0.9)', fontSize: 13, fontWeight: '600', marginBottom: 4 }}>
+                ⚠ Disputa em análise
+              </Text>
+              <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12, lineHeight: 17 }}>
+                Nossa equipe está analisando seu caso e entrará em contato em breve.
+              </Text>
             </View>
           )}
 

@@ -260,6 +260,9 @@ export function FinanceiroScreen() {
                       }
                     </Pressable>
                   </View>
+                  <Text style={{ color: 'rgba(234,234,234,0.4)', fontSize: 11, marginTop: 8, lineHeight: 16 }}>
+                    A cada saque será descontado o valor de R$3,67 referente à intermediadora de pagamentos.
+                  </Text>
                 </View>
               )}
             </>

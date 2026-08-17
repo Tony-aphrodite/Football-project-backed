@@ -14,6 +14,7 @@ import type { ShippingOption } from '../shipping/shipping.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { ShippingEstimateDto } from './dto/shipping-estimate.dto';
 import { UpdateTrackingDto } from './dto/update-tracking.dto';
+import { DisputeOrderDto } from './dto/dispute-order.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { JwtPayload } from '../auth/types/jwt-payload.type';
@@ -64,6 +65,17 @@ export class OrdersController {
     @Param('id') id: string,
   ): Promise<void> {
     return this.orders.confirmReceipt(user.sub, id);
+  }
+
+  @Post(':id/dispute')
+  @HttpCode(204)
+  @UseGuards(JwtAuthGuard)
+  disputeOrder(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+    @Body() dto: DisputeOrderDto,
+  ): Promise<void> {
+    return this.orders.disputeOrder(user.sub, id, dto.reason);
   }
 
   @Patch(':id/tracking')

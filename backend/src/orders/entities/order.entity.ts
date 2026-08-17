@@ -6,6 +6,7 @@ export type OrderStatus =
   | 'SHIPPED'
   | 'DELIVERED'
   | 'COMPLETED'
+  | 'DISPUTED'
   | 'CANCELLED';
 
 export interface OrderRecord {
@@ -48,14 +49,16 @@ export interface OrderRecord {
   cardLast4?:     string;
   installments?:  number;
   escrowReleaseAt?: string;
+  disputedAt?:      string;
+  disputeReason?:   string;
   correiosTracking?: string;
   melhorEnvioOrderId?:      string;
   shippingLabelUrl?:        string;
   shippingTrackingCode?:    string;
   shippingCarrier?:         string;
   shippingService?:         string;
-  shippingActualCostCents?: number;   // actual cost paid to Melhor Envio
-  shippingSpreadCents?:     number;   // buyer paid − actual cost = spread
+  shippingActualCostCents?: number;
+  shippingSpreadCents?:     number;
   spreadBeneficiary?:       'DEVELOPER' | 'ARENA';
   GSI1PK:      string;   // ORDER_BUYER#${buyerId}
   GSI1SK:      string;   // ${createdAt}#${orderId}
@@ -99,6 +102,8 @@ export interface OrderPublic {
   cardLast4?:     string;
   installments?:  number;
   escrowReleaseAt?: string;
+  disputedAt?:      string;
+  disputeReason?:   string;
   correiosTracking?: string;
   melhorEnvioOrderId?:      string;
   shippingLabelUrl?:        string;
@@ -131,8 +136,10 @@ export function toOrderPublic(o: OrderRecord): OrderPublic {
     cardChargeId:     o.cardChargeId,
     cardLast4:        o.cardLast4,
     installments:     o.installments,
-    escrowReleaseAt:       o.escrowReleaseAt,
-    correiosTracking:      o.correiosTracking,
+    escrowReleaseAt:  o.escrowReleaseAt,
+    disputedAt:       o.disputedAt,
+    disputeReason:    o.disputeReason,
+    correiosTracking: o.correiosTracking,
     melhorEnvioOrderId:       o.melhorEnvioOrderId,
     shippingLabelUrl:         o.shippingLabelUrl,
     shippingTrackingCode:     o.shippingTrackingCode,
