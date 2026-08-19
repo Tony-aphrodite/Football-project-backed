@@ -2,7 +2,7 @@
   "expo": {
     "name": "Arena dos Mantos",
     "slug": "arena-dos-mantos",
-    "version": "0.9.9",
+    "version": "1.0.0",
     "orientation": "portrait",
     "scheme": "arenadosmantos",
     "userInterfaceStyle": "light",
