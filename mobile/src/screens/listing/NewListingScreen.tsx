@@ -957,8 +957,9 @@ export function NewListingScreen() {
         {(() => {
           const v = parseFloat(form.priceText.replace(',', '.'));
           if (!form.priceText || isNaN(v) || v < 1) return null;
-          const fee = v * 0.07;
-          const net = v * 0.93;
+          const arenaFee   = v * 0.07;
+          const processorFee = v * 0.04;
+          const net        = v - arenaFee - processorFee;
           const fmt = (n: number) => n.toFixed(2).replace('.', ',');
           return (
             <View style={{
@@ -975,15 +976,19 @@ export function NewListingScreen() {
               </View>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
                 <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: 13 }}>Comissão Arena (7%)</Text>
-                <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 13 }}>− R$ {fmt(fee)}</Text>
+                <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 13 }}>− R$ {fmt(arenaFee)}</Text>
+              </View>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: 13 }}>Taxa do processador (4%)</Text>
+                <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 13 }}>− R$ {fmt(processorFee)}</Text>
               </View>
               <View style={{ height: 1, backgroundColor: 'rgba(212,175,55,0.2)', marginVertical: 8 }} />
               <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                <Text style={{ color: '#D4AF37', fontSize: 14, fontWeight: '700' }}>Você recebe (via Pix)</Text>
+                <Text style={{ color: '#D4AF37', fontSize: 14, fontWeight: '700' }}>Você recebe</Text>
                 <Text style={{ color: '#D4AF37', fontSize: 14, fontWeight: '700' }}>R$ {fmt(net)}</Text>
               </View>
               <Text style={{ color: 'rgba(255,255,255,0.4)', fontSize: 11, marginTop: 8, lineHeight: 16 }}>
-                Pagamentos por cartão de crédito têm taxa adicional do processador (até 4%). Via Pix, você recebe exatamente o valor acima.
+                💡 Pagamentos via Pix têm taxa reduzida pelo processador — você pode receber um valor maior.
               </Text>
             </View>
           );
