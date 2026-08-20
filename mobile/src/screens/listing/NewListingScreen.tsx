@@ -979,7 +979,7 @@ export function NewListingScreen() {
                 <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 13 }}>− R$ {fmt(arenaFee)}</Text>
               </View>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
-                <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: 13 }}>Taxa do processador (4%)</Text>
+                <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: 13 }}>Taxa do processador (até 4%)</Text>
                 <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 13 }}>− R$ {fmt(processorFee)}</Text>
               </View>
               <View style={{ height: 1, backgroundColor: 'rgba(212,175,55,0.2)', marginVertical: 8 }} />
@@ -988,7 +988,7 @@ export function NewListingScreen() {
                 <Text style={{ color: '#D4AF37', fontSize: 14, fontWeight: '700' }}>R$ {fmt(net)}</Text>
               </View>
               <Text style={{ color: 'rgba(255,255,255,0.4)', fontSize: 11, marginTop: 8, lineHeight: 16 }}>
-                💡 Pagamentos via Pix têm taxa reduzida pelo processador — você pode receber um valor maior.
+                A taxa do processador de até 4% ocorre para compras via cartão de crédito parcelado. Pagamentos via Pix têm taxa reduzida pelo processador — você pode receber um valor maior.
               </Text>
             </View>
           );
