@@ -104,7 +104,7 @@ export function OnboardingSurveyScreen() {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.arenaFundo }}>
       <ScrollView
-        contentContainerStyle={{ padding: 24, paddingBottom: 48 }}
+        contentContainerStyle={{ padding: 24, paddingBottom: 24 }}
         showsVerticalScrollIndicator={false}
       >
         {/* Header */}
@@ -212,7 +212,26 @@ export function OnboardingSurveyScreen() {
           </View>
         ))}
 
-        {/* Submit */}
+        {/* Progress dots */}
+        <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 6, marginTop: 24 }}>
+          {QUESTIONS.map((q) => (
+            <View key={q.id} style={{
+              width: answers[q.id] ? 20 : 6,
+              height: 6,
+              borderRadius: 3,
+              backgroundColor: answers[q.id] ? colors.arenaDourado : 'rgba(255,255,255,0.2)',
+            }} />
+          ))}
+        </View>
+      </ScrollView>
+
+      {/* Submit — fixed at bottom so it's always reachable */}
+      <View style={{ paddingHorizontal: 24, paddingBottom: 24, paddingTop: 12, backgroundColor: colors.arenaFundo }}>
+        {!allAnswered && (
+          <Text style={{ textAlign: 'center', color: 'rgba(234,234,234,0.4)', fontSize: 12, marginBottom: 8 }}>
+            {QUESTIONS.filter((q) => !answers[q.id]).length} pergunta{QUESTIONS.filter((q) => !answers[q.id]).length !== 1 ? 's' : ''} ainda sem resposta
+          </Text>
+        )}
         <Pressable
           onPress={handleSubmit}
           disabled={!allAnswered || submitting}
@@ -221,7 +240,6 @@ export function OnboardingSurveyScreen() {
             borderRadius: 16,
             paddingVertical: 18,
             alignItems: 'center',
-            marginTop: 8,
             opacity: pressed ? 0.85 : 1,
           })}
         >
@@ -238,19 +256,7 @@ export function OnboardingSurveyScreen() {
             )
           }
         </Pressable>
-
-        {/* Progress dots */}
-        <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 6, marginTop: 24 }}>
-          {QUESTIONS.map((q) => (
-            <View key={q.id} style={{
-              width: answers[q.id] ? 20 : 6,
-              height: 6,
-              borderRadius: 3,
-              backgroundColor: answers[q.id] ? colors.arenaDourado : 'rgba(255,255,255,0.2)',
-            }} />
-          ))}
-        </View>
-      </ScrollView>
+      </View>
     </SafeAreaView>
   );
 }

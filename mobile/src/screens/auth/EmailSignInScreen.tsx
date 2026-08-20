@@ -107,6 +107,8 @@ export function EmailSignInScreen({ navigation }: Props) {
                 placeholderTextColor="rgba(255,255,255,0.3)"
                 secureTextEntry={!showPwd}
                 autoComplete="password"
+                autoCapitalize="none"
+                autoCorrect={false}
                 style={[input, { paddingRight: 52 }]}
               />
               <Pressable

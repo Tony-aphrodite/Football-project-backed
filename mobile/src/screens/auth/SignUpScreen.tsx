@@ -149,6 +149,8 @@ export function SignUpScreen({ navigation }: Props) {
                 placeholder="Mínimo 8 caracteres"
                 placeholderTextColor="rgba(255,255,255,0.3)"
                 secureTextEntry={!showPwd}
+                autoCapitalize="none"
+                autoCorrect={false}
                 style={[input, { paddingRight: 52 }]}
               />
               <Pressable
@@ -168,6 +170,8 @@ export function SignUpScreen({ navigation }: Props) {
               placeholder="Repita a senha"
               placeholderTextColor="rgba(255,255,255,0.3)"
               secureTextEntry={!showPwd}
+              autoCapitalize="none"
+              autoCorrect={false}
               style={input}
             />
 
