@@ -66,6 +66,14 @@ export interface UserRecord {
   nomeCompleto?: string;
   dadosPessoaisLockedAt?: string;  // ISO timestamp; set when user saves for the first time
 
+  // Post-registration onboarding survey
+  surveyCompletedAt?: string;
+  surveyProfile?: string;        // colecionador | lojista | ambos
+  surveyCollectionSize?: string;
+  surveyStoreSize?: string;
+  surveyBuyPerMonth?: string;
+  surveySellPerMonth?: string;
+
   // Bank account (Financeiro) — locked after first save
   bankCode?: string;          // e.g. "033"
   bankAgency?: string;        // branch number without digit
@@ -92,6 +100,7 @@ export interface UserPublic {
   sellerEstado?:  string;
   pagarmeRecipientId?: string;
   lgpdConsentAt?: string;
+  surveyCompletedAt?: string;
   nomeCompleto?: string;
   dadosPessoaisLockedAt?: string;
   bankCode?: string;
@@ -125,6 +134,7 @@ export function toPublic(u: UserRecord): UserPublic {
     sellerEstado:  u.sellerEstado,
     pagarmeRecipientId: u.pagarmeRecipientId,
     lgpdConsentAt:      u.lgpdConsentAt,
+    surveyCompletedAt:  u.surveyCompletedAt,
     nomeCompleto:       u.nomeCompleto,
     dadosPessoaisLockedAt: u.dadosPessoaisLockedAt,
     bankCode:          u.bankCode,

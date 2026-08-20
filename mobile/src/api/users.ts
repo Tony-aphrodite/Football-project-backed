@@ -45,4 +45,13 @@ export const UsersApi = {
   getWithdrawals(): Promise<WithdrawalItem[]> {
     return api.get('/users/me/financeiro/withdrawals').then((r) => r.data as WithdrawalItem[]);
   },
+  submitSurvey(data: {
+    profile: string;
+    collectionSize: string;
+    storeSize: string;
+    buyPerMonth: string;
+    sellPerMonth: string;
+  }): Promise<PublicUser> {
+    return api.post('/users/me/survey', data).then((r) => r.data as PublicUser);
+  },
 };

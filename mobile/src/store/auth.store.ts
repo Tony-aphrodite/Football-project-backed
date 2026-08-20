@@ -14,6 +14,7 @@ export interface PublicUser {
   sellerCidade?:  string;
   sellerEstado?:  string;
   lgpdConsentAt?: string;
+  surveyCompletedAt?: string;
   nomeCompleto?: string;
   dadosPessoaisLockedAt?: string;
   bankCode?: string;
@@ -51,6 +52,7 @@ interface AuthState {
   setSession: (s: Session) => Promise<void>;
   setTotpTempToken: (token: string) => void;
   setTotpEnabled: (enabled: boolean) => void;
+  setUser: (user: PublicUser) => void;
   setListingsActiveCount: (count: number) => void;
   enterAsGuest: () => void;
   clear: () => Promise<void>;
@@ -117,6 +119,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     const updated = { ...user, totpEnabled: enabled };
     set({ user: updated });
     void SecureStore.setItemAsync(USER_KEY, JSON.stringify(updated));
+  },
+
+  setUser(user: PublicUser) {
+    set({ user });
+    void SecureStore.setItemAsync(USER_KEY, JSON.stringify(user));
   },
 
   setListingsActiveCount(count: number) {

@@ -38,6 +38,7 @@ export type AuthStackParamList = {
   VerifyPhone: undefined;
   VerifyCpf: undefined;
   LgpdConsent: undefined;
+  OnboardingSurvey: undefined;
 };
 
 export type MainTabParamList = {
@@ -73,6 +74,7 @@ export type RootStackParamList = {
   OrderDetail: { orderId: string };
   Quiz: undefined;
   Cart: undefined;
+  OnboardingSurvey: undefined;
 };
 
 declare global {

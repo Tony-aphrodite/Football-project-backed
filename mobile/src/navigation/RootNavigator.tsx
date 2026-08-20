@@ -15,6 +15,7 @@ import { VerifyCpfScreen } from '../screens/auth/VerifyCpfScreen';
 import { VerifyPhoneProfileScreen } from '../screens/auth/VerifyPhoneProfileScreen';
 import { VerifyCpfProfileScreen } from '../screens/auth/VerifyCpfProfileScreen';
 import { LgpdConsentScreen } from '../screens/auth/LgpdConsentScreen';
+import { OnboardingSurveyScreen } from '../screens/auth/OnboardingSurveyScreen';
 import { MainTabs } from './MainTabs';
 import { ListingDetailScreen } from '../screens/listing/ListingDetailScreen';
 import { SellerProfileScreen } from '../screens/seller/SellerProfileScreen';
@@ -62,7 +63,7 @@ export function RootNavigator() {
 
   // Register push token once user is fully authenticated
   useEffect(() => {
-    if (accessToken && user?.lgpdConsentAt && !isGuest) {
+    if (accessToken && user?.lgpdConsentAt && user?.surveyCompletedAt && !isGuest) {
       void registerPushToken();
     }
   }, [accessToken, user?.lgpdConsentAt, isGuest]);
@@ -89,6 +90,8 @@ export function RootNavigator() {
           </>
         ) : !isGuest && !user?.lgpdConsentAt ? (
           <Stack.Screen name="LgpdConsent" component={s(LgpdConsentScreen)} />
+        ) : !isGuest && !user?.surveyCompletedAt ? (
+          <Stack.Screen name="OnboardingSurvey" component={s(OnboardingSurveyScreen)} />
         ) : (
           <>
             <Stack.Screen name="Main"          component={s(MainTabs)} />
