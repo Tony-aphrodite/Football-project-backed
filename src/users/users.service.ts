@@ -191,6 +191,36 @@ export class UsersService {
     ]);
   }
 
+  async submitSurvey(
+    userId: string,
+    profile: string,
+    collectionSize: string,
+    storeSize: string,
+    buyPerMonth: string,
+    sellPerMonth: string,
+  ): Promise<UserPublic> {
+    const u = await this.getById(userId);
+    const now = new Date().toISOString();
+    await this.db.update({
+      Key: { PK: u.PK, SK: u.SK },
+      UpdateExpression:
+        'SET surveyCompletedAt = :at, surveyProfile = :p, surveyCollectionSize = :cs, ' +
+        'surveyStoreSize = :ss, surveyBuyPerMonth = :bpm, surveySellPerMonth = :spm, updatedAt = :now',
+      ExpressionAttributeValues: {
+        ':at':  now,
+        ':p':   profile,
+        ':cs':  collectionSize,
+        ':ss':  storeSize,
+        ':bpm': buyPerMonth,
+        ':spm': sellPerMonth,
+        ':now': now,
+      },
+    });
+    return toPublic({ ...u, surveyCompletedAt: now, surveyProfile: profile,
+      surveyCollectionSize: collectionSize, surveyStoreSize: storeSize,
+      surveyBuyPerMonth: buyPerMonth, surveySellPerMonth: sellPerMonth, updatedAt: now });
+  }
+
   async recordLgpdConsent(userId: string, version: string): Promise<void> {
     const u = await this.getById(userId);
     await this.db.update({

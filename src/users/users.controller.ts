@@ -4,6 +4,7 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { AdminGuard } from '../common/guards/admin.guard';
 import { UsersService } from './users.service';
 import { PagarmeService } from '../payments/pagarme.service';
+import { SurveyDto } from './dto/survey.dto';
 import type { JwtPayload } from '../auth/types/jwt-payload.type';
 
 class UpdatePushTokenDto {
@@ -52,6 +53,19 @@ export class UsersController {
     const u = await this.users.getById(req.user.sub);
     const { toPublic } = await import('./entities/user.entity');
     return toPublic(u);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('me/survey')
+  submitSurvey(@Body() dto: SurveyDto, @Request() req: { user: JwtPayload }) {
+    return this.users.submitSurvey(
+      req.user.sub,
+      dto.profile,
+      dto.collectionSize,
+      dto.storeSize,
+      dto.buyPerMonth,
+      dto.sellPerMonth,
+    );
   }
 
   @UseGuards(JwtAuthGuard)
