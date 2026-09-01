@@ -2,6 +2,8 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { algoliasearch, type Algoliasearch } from 'algoliasearch';
 import type { AppConfig } from '../config/configuration';
+import { DynamoDbService } from '../dynamodb/dynamodb.service';
+import { type ListingRecord, toListingPublic, type ListingPublic } from '../listings/entities/listing.entity';
 
 export interface ListingIndexRecord {
   objectID: string;       // listingId
@@ -34,7 +36,10 @@ export class AlgoliaService implements OnModuleInit {
   private client: Algoliasearch | null = null;
   private indexName: string = 'listings';
 
-  constructor(private readonly config: ConfigService<AppConfig, true>) {}
+  constructor(
+    private readonly config: ConfigService<AppConfig, true>,
+    private readonly db: DynamoDbService,
+  ) {}
 
   onModuleInit() {
     const appId  = this.config.get('algolia.appId',       { infer: true });
@@ -123,5 +128,62 @@ export class AlgoliaService implements OnModuleInit {
     const searchApiKey = this.config.get('algolia.searchApiKey', { infer: true });
     if (!appId || !searchApiKey) return null;
     return { appId, searchApiKey, indexName: this.indexName };
+  }
+
+  /** DB fallback — case-insensitive text search when Algolia is not configured. */
+  async searchDb(q: string, limit = 40): Promise<ListingPublic[]> {
+    const term = q.toLowerCase();
+    const records = await this.db.scan<ListingRecord>({
+      FilterExpression: '#status = :active',
+      ExpressionAttributeNames: { '#status': 'status' },
+      ExpressionAttributeValues: { ':active': 'ACTIVE' },
+    });
+    return records
+      .filter((r) =>
+        r.status === 'ACTIVE' && (
+          r.teamName?.toLowerCase().includes(term) ||
+          r.supplier?.toLowerCase().includes(term) ||
+          r.description?.toLowerCase().includes(term) ||
+          r.country?.toLowerCase().includes(term)
+        ),
+      )
+      .slice(0, limit)
+      .map(toListingPublic);
+  }
+
+  /** Re-index all ACTIVE listings into Algolia. Call once after setting credentials. */
+  async reindexAll(): Promise<number> {
+    if (!this.isEnabled) return 0;
+    const records = await this.db.scan<ListingRecord>({
+      FilterExpression: '#status = :active',
+      ExpressionAttributeNames: { '#status': 'status' },
+      ExpressionAttributeValues: { ':active': 'ACTIVE' },
+    });
+    const active = records.filter((r) => r.status === 'ACTIVE');
+    await Promise.all(active.map((r) => this.upsert({
+      objectID:           r.listingId,
+      listingId:          r.listingId,
+      sellerId:           r.sellerId,
+      sellerName:         r.sellerName,
+      kind:               r.kind,
+      teamName:           r.teamName,
+      continent:          r.continent,
+      country:            r.country,
+      season:             r.season,
+      supplier:           r.supplier,
+      model:              r.model,
+      garmentType:        r.garmentType,
+      size:               r.size,
+      condition:          r.condition,
+      gender:             r.gender,
+      priceCents:         r.priceCents,
+      description:        r.description,
+      photoKeys:          r.photoKeys,
+      isMpc:              r.isMpc,
+      status:             r.status,
+      createdAt:          r.createdAt,
+      createdAtTimestamp: Math.floor(new Date(r.createdAt).getTime() / 1000),
+    })));
+    return active.length;
   }
 }

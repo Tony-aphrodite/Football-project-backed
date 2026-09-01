@@ -152,6 +152,7 @@ export class ListingsService {
     return records.map(toListingPublic);
   }
 
+
   async listMine(sellerId: string): Promise<ListingPublic[]> {
     interface Ref { listingId: string }
     const refs = await this.db.query<Ref>({
