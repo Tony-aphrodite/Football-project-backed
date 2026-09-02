@@ -252,7 +252,9 @@ export class ListingsService {
       UpdateExpression:          'SET photoKeys = :keys, updatedAt = :now',
       ExpressionAttributeValues: { ':keys': updated, ':now': now },
     });
-    return toListingPublic({ ...record, photoKeys: updated, updatedAt: now });
+    const result = { ...record, photoKeys: updated, updatedAt: now };
+    void this.algolia.upsert(this.toIndexRecord(result));
+    return toListingPublic(result);
   }
 
   async removePhotoKey(sellerId: string, listingId: string, key: string): Promise<ListingPublic> {
@@ -268,7 +270,9 @@ export class ListingsService {
       UpdateExpression:          'SET photoKeys = :keys, updatedAt = :now',
       ExpressionAttributeValues: { ':keys': updated, ':now': now },
     });
-    return toListingPublic({ ...record, photoKeys: updated, updatedAt: now });
+    const result = { ...record, photoKeys: updated, updatedAt: now };
+    void this.algolia.upsert(this.toIndexRecord(result));
+    return toListingPublic(result);
   }
 
   async remove(sellerId: string, listingId: string): Promise<void> {
@@ -307,10 +311,4 @@ export class ListingsService {
     void this.algolia.remove(listingId);
   }
 
-  async addPhotoKeyAndSync(sellerId: string, listingId: string, key: string): Promise<ListingPublic> {
-    const result = await this.addPhotoKey(sellerId, listingId, key);
-    const record = await this.getRecord(listingId);
-    if (record) void this.algolia.upsert(this.toIndexRecord(record));
-    return result;
-  }
 }
