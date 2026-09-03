@@ -133,14 +133,16 @@ export class AlgoliaService implements OnModuleInit {
   /** DB fallback — case-insensitive text search when Algolia is not configured. */
   async searchDb(q: string, limit = 40): Promise<ListingPublic[]> {
     const term = q.toLowerCase();
-    const records = await this.db.scan<ListingRecord>({
-      FilterExpression: '#status = :active',
+    // entityType matters: this is a single-table design, so filtering on
+    // status alone also matches users, orders and every other ACTIVE row.
+    const records = await this.db.scanAll<ListingRecord>({
+      FilterExpression: '#status = :active AND entityType = :type',
       ExpressionAttributeNames: { '#status': 'status' },
-      ExpressionAttributeValues: { ':active': 'ACTIVE' },
+      ExpressionAttributeValues: { ':active': 'ACTIVE', ':type': 'Listing' },
     });
     return records
       .filter((r) =>
-        r.status === 'ACTIVE' && (
+        r.status === 'ACTIVE' && r.entityType === 'Listing' && (
           r.teamName?.toLowerCase().includes(term) ||
           r.supplier?.toLowerCase().includes(term) ||
           r.description?.toLowerCase().includes(term) ||
@@ -154,12 +156,21 @@ export class AlgoliaService implements OnModuleInit {
   /** Re-index all ACTIVE listings into Algolia. Call once after setting credentials. */
   async reindexAll(): Promise<number> {
     if (!this.isEnabled) return 0;
-    const records = await this.db.scan<ListingRecord>({
-      FilterExpression: '#status = :active',
+    // entityType matters: this is a single-table design, so filtering on
+    // status alone also matches users, orders and every other ACTIVE row.
+    const records = await this.db.scanAll<ListingRecord>({
+      FilterExpression: '#status = :active AND entityType = :type',
       ExpressionAttributeNames: { '#status': 'status' },
-      ExpressionAttributeValues: { ':active': 'ACTIVE' },
+      ExpressionAttributeValues: { ':active': 'ACTIVE', ':type': 'Listing' },
     });
-    const active = records.filter((r) => r.status === 'ACTIVE');
+    const active = records.filter((r) => r.status === 'ACTIVE' && r.entityType === 'Listing');
+    // Wipe first so the index ends up mirroring the DB exactly — otherwise
+    // rows deleted or wrongly indexed in the past linger forever.
+    try {
+      await this.client!.clearObjects({ indexName: this.indexName });
+    } catch (err) {
+      this.logger.error('Algolia clear before reindex failed:', err);
+    }
     await Promise.all(active.map((r) => this.upsert({
       objectID:           r.listingId,
       listingId:          r.listingId,

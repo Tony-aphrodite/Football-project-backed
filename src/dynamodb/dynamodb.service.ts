@@ -71,6 +71,23 @@ export class DynamoDbService {
     return (out.Items ?? []) as T[];
   }
 
+  /**
+   * Scan every page. A plain `scan` stops at DynamoDB's 1MB read limit, which
+   * silently drops rows once the table grows — always use this for "all rows".
+   */
+  async scanAll<T>(input: Omit<ScanCommandInput, 'TableName'>): Promise<T[]> {
+    const items: T[] = [];
+    let key: Record<string, unknown> | undefined;
+    do {
+      const out = await this.doc.send(
+        new ScanCommand({ ...input, TableName: this.tableName, ExclusiveStartKey: key }),
+      );
+      items.push(...((out.Items ?? []) as T[]));
+      key = out.LastEvaluatedKey;
+    } while (key);
+    return items;
+  }
+
   async scanCount(input: Omit<ScanCommandInput, 'TableName' | 'Select'>): Promise<number> {
     const out = await this.doc.send(
       new ScanCommand({ ...input, TableName: this.tableName, Select: 'COUNT' }),
