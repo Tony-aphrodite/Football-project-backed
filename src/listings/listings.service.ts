@@ -11,6 +11,7 @@ import {
 } from './entities/listing.entity';
 import type { CreateListingDto } from './dto/create-listing.dto';
 import type { UpdatePriceDto } from './dto/update-price.dto';
+import type { UpdateListingDto } from './dto/update-listing.dto';
 import { AlgoliaService, type ListingIndexRecord } from '../search/algolia.service';
 
 const LISTING_CAP = 20;
@@ -191,6 +192,50 @@ export class ListingsService {
     });
 
     const updated = { ...record, priceCents: dto.priceCents, updatedAt: now };
+    void this.algolia.upsert(this.toIndexRecord(updated));
+    return toListingPublic(updated);
+  }
+
+  /** Fetch a single listing by id — public, always fresh from the DB. */
+  async getById(listingId: string): Promise<ListingPublic> {
+    const k = Keys.listing(listingId) as { PK: string; SK: 'METADATA' };
+    const record = await this.db.get<ListingRecord>(k.PK, k.SK);
+    if (!record || record.status === 'REMOVED') throw new NotFoundException('Listing not found');
+    return toListingPublic(record);
+  }
+
+  /** Edit listing details. Only the fields present in the DTO are changed. */
+  async updateDetails(sellerId: string, listingId: string, dto: UpdateListingDto): Promise<ListingPublic> {
+    const k = Keys.listing(listingId) as { PK: string; SK: 'METADATA' };
+    const record = await this.db.get<ListingRecord>(k.PK, k.SK);
+
+    if (!record) throw new NotFoundException('Listing not found');
+    if (record.sellerId !== sellerId) throw new ForbiddenException('Not your listing');
+    if (record.status === 'REMOVED') throw new BadRequestException('Listing already removed');
+    if (record.status === 'SOLD') throw new BadRequestException('Cannot edit a sold listing');
+
+    const entries = Object.entries(dto).filter(([, v]) => v !== undefined);
+    if (entries.length === 0) return toListingPublic(record);
+
+    const now = new Date().toISOString();
+    const names:  Record<string, string>  = {};
+    const values: Record<string, unknown> = { ':now': now };
+    const sets: string[] = [];
+
+    entries.forEach(([field, value], i) => {
+      names[`#f${i}`]  = field;
+      values[`:v${i}`] = value;
+      sets.push(`#f${i} = :v${i}`);
+    });
+
+    await this.db.update({
+      Key:                       { PK: k.PK, SK: k.SK },
+      UpdateExpression:          `SET ${sets.join(', ')}, updatedAt = :now`,
+      ExpressionAttributeNames:  names,
+      ExpressionAttributeValues: values,
+    });
+
+    const updated = { ...record, ...(Object.fromEntries(entries) as Partial<ListingRecord>), updatedAt: now };
     void this.algolia.upsert(this.toIndexRecord(updated));
     return toListingPublic(updated);
   }

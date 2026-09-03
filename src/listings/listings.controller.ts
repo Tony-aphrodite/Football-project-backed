@@ -5,6 +5,7 @@ import { ConfigService } from '@nestjs/config';
 import { ListingsService } from './listings.service';
 import { CreateListingDto } from './dto/create-listing.dto';
 import { UpdatePriceDto } from './dto/update-price.dto';
+import { UpdateListingDto } from './dto/update-listing.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { AdminGuard } from '../common/guards/admin.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -91,6 +92,12 @@ export class ListingsController {
     return this.listings.listBySeller(sellerId);
   }
 
+  /** Single listing, always fresh from the DB — public. Keep after static GET routes. */
+  @Get(':id')
+  getById(@Param('id') id: string): Promise<ListingPublic> {
+    return this.listings.getById(id);
+  }
+
   @Patch(':id/price')
   @UseGuards(JwtAuthGuard)
   updatePrice(
@@ -99,6 +106,17 @@ export class ListingsController {
     @Body() dto: UpdatePriceDto,
   ): Promise<ListingPublic> {
     return this.listings.updatePrice(user.sub, id, dto);
+  }
+
+  /** Edit listing details (condition, season, size, …) — owner only. */
+  @Patch(':id')
+  @UseGuards(JwtAuthGuard)
+  updateDetails(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+    @Body() dto: UpdateListingDto,
+  ): Promise<ListingPublic> {
+    return this.listings.updateDetails(user.sub, id, dto);
   }
 
   @Patch(':id/remove')
