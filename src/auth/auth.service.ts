@@ -342,7 +342,7 @@ export class AuthService {
         { sub: user.userId, totpPending: true },
         {
           secret:    this.config.get('jwt.accessSecret', { infer: true }),
-          expiresIn: '5m',
+          expiresIn: '10m', // long enough to find/open the authenticator app
         },
       );
       return { totpRequired: true, tempToken };

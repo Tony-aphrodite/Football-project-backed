@@ -7,6 +7,12 @@ import {
 import { authenticator } from 'otplib';
 import QRCode from 'qrcode';
 
+// otplib defaults to window 0: only the code for the *current* 30s step is
+// accepted. A user who reads the code late in its window and takes a few
+// seconds to type it gets rejected with a correct code. window 1 accepts the
+// previous and next step too (±30s) — what Google, GitHub etc. do.
+authenticator.options = { ...authenticator.options, window: 1 };
+
 import { DynamoDbService } from '../../dynamodb/dynamodb.service';
 import { Keys } from '../../dynamodb/keys';
 import type { UserRecord } from '../../users/entities/user.entity';
