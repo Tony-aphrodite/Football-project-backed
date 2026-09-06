@@ -17,6 +17,16 @@ import type { ShippingEstimateDto } from './dto/shipping-estimate.dto';
 import { ShippingService, type ShippingOption } from '../shipping/shipping.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { UsersService } from '../users/users.service';
+import { EmailService } from '../email/email.service';
+import {
+  deliveryConfirmedSellerEmail,
+  disputeOpenedSellerEmail,
+  orderCompletedBuyerEmail,
+  orderShippedBuyerEmail,
+  paymentReleasedSellerEmail,
+  rateReminderEmail,
+  type OrderEmailData,
+} from '../email/email.templates';
 
 @Injectable()
 export class OrdersService {
@@ -27,7 +37,21 @@ export class OrdersService {
     private readonly shipping:      ShippingService,
     private readonly notifications: NotificationsService,
     private readonly users:         UsersService,
+    private readonly email:         EmailService,
   ) {}
+
+  /** Shape an order record for the email templates. */
+  private emailData(order: OrderRecord): OrderEmailData {
+    return {
+      orderId:    order.orderId,
+      teamName:   order.teamName,
+      season:     order.season,
+      priceCents: order.priceCents,
+      buyerName:  order.buyerName,
+      sellerName: order.sellerName,
+      tracking:   order.correiosTracking,
+    };
+  }
 
   async create(buyerId: string, dto: CreateOrderDto): Promise<OrderPublic> {
     // Fetch buyer
@@ -242,6 +266,16 @@ export class OrdersService {
       `${order.buyerName} confirmou o recebimento de ${order.teamName}. Pagamento sendo processado.`,
       { orderId: order.orderId, screen: 'OrderDetail' },
     );
+    const confirmedMail = deliveryConfirmedSellerEmail(this.emailData(order));
+    void this.email.send(seller?.email, confirmedMail.subject, confirmedMail.html);
+
+    // Both sides can rate once delivery is confirmed — without a nudge here
+    // almost nobody returns to the app to do it.
+    const buyerForRating = await this.users.findById(order.buyerId).catch(() => null);
+    const rateSeller = rateReminderEmail(this.emailData(order), order.sellerName);
+    void this.email.send(buyerForRating?.email, rateSeller.subject, rateSeller.html);
+    const rateBuyer = rateReminderEmail(this.emailData(order), order.buyerName);
+    void this.email.send(seller?.email, rateBuyer.subject, rateBuyer.html);
   }
 
   async addTracking(sellerId: string, orderId: string, correiosTracking: string): Promise<OrderPublic> {
@@ -278,6 +312,11 @@ export class OrdersService {
       `${order.teamName} está a caminho. Rastreio: ${correiosTracking.toUpperCase()}`,
       { orderId: order.orderId, screen: 'OrderDetail' },
     );
+    const shippedMail = orderShippedBuyerEmail({
+      ...this.emailData(order),
+      tracking: correiosTracking.toUpperCase(),
+    });
+    void this.email.send(buyer?.email, shippedMail.subject, shippedMail.html);
 
     return updated;
   }
@@ -311,6 +350,8 @@ export class OrdersService {
       `O comprador abriu uma disputa no pedido #${orderId.slice(-8).toUpperCase()}. Nossa equipe entrará em contato.`,
       { orderId, screen: 'OrderDetail' },
     );
+    const disputeMail = disputeOpenedSellerEmail(this.emailData(order), reason);
+    void this.email.send(seller?.email, disputeMail.subject, disputeMail.html);
   }
 
   async runAutoRelease(): Promise<void> {
@@ -358,6 +399,11 @@ export class OrdersService {
           `Seu pedido de ${order.teamName} foi concluído com sucesso.`,
           { orderId: order.orderId, screen: 'OrderDetail' },
         );
+
+        const releasedMail  = paymentReleasedSellerEmail(this.emailData(order));
+        void this.email.send(seller?.email, releasedMail.subject, releasedMail.html);
+        const completedMail = orderCompletedBuyerEmail(this.emailData(order));
+        void this.email.send(buyer?.email, completedMail.subject, completedMail.html);
       } catch (err) {
         this.logger.error(`Auto-release failed for order ${order.orderId}:`, err);
       }

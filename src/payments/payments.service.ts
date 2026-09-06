@@ -16,6 +16,13 @@ import { UsersService } from '../users/users.service';
 import { DeveloperEarningsService } from '../developer-earnings/developer-earnings.service';
 import { FiscalService } from '../fiscal/fiscal.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { EmailService } from '../email/email.service';
+import {
+  orderPaidSellerEmail,
+  orderShippedBuyerEmail,
+  shippingLabelEmail,
+  type OrderEmailData,
+} from '../email/email.templates';
 import type { AppConfig } from '../config/configuration';
 
 export interface PixPaymentResult {
@@ -53,7 +60,21 @@ export class PaymentsService {
     private readonly fiscal:         FiscalService,
     private readonly notifications:  NotificationsService,
     private readonly config:         ConfigService<AppConfig, true>,
+    private readonly email:          EmailService,
   ) {}
+
+  /** Shape an order record for the email templates. */
+  private emailData(order: OrderRecord): OrderEmailData {
+    return {
+      orderId:    order.orderId,
+      teamName:   order.teamName,
+      season:     order.season,
+      priceCents: order.priceCents,
+      buyerName:  order.buyerName,
+      sellerName: order.sellerName,
+      tracking:   order.correiosTracking,
+    };
+  }
 
   // ── Initiate PIX ─────────────────────────────────────────────────────────
 
@@ -395,6 +416,8 @@ export class PaymentsService {
       `${order.buyerName} comprou ${order.teamName}. Pedido #${shortId}`,
       { orderId: order.orderId, screen: 'OrderDetail' },
     );
+    const paidMail = orderPaidSellerEmail(this.emailData(order));
+    void this.email.send(seller?.email, paidMail.subject, paidMail.html);
   }
 
   private async purchaseLabelAsync(order: OrderRecord): Promise<void> {
@@ -474,6 +497,20 @@ export class PaymentsService {
           `${order.teamName} está a caminho. Rastreio: ${result.trackingCode}`,
           { orderId: order.orderId, screen: 'OrderDetail' },
         );
+
+        const shipData: OrderEmailData = {
+          ...this.emailData(order),
+          tracking: result.trackingCode,
+          labelUrl: result.labelUrl,
+        };
+        const shippedMail = orderShippedBuyerEmail(shipData);
+        void this.email.send(buyer?.email, shippedMail.subject, shippedMail.html);
+
+        // The Correios label is bought automatically but was only reachable
+        // inside the app — send it to the seller so they can just print it.
+        const sellerForLabel = await this.users.findById(order.sellerId).catch(() => null);
+        const labelMail = shippingLabelEmail(shipData);
+        void this.email.send(sellerForLabel?.email, labelMail.subject, labelMail.html);
       }
     } catch (err) {
       this.logger.error(`Label purchase failed for order ${order.orderId}`, err);

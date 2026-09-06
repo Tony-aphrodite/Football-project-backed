@@ -16,6 +16,8 @@ import type { AppConfig } from '../config/configuration';
 import { DynamoDbService } from '../dynamodb/dynamodb.service';
 import { Keys } from '../dynamodb/keys';
 import { UsersService } from '../users/users.service';
+import { EmailService } from '../email/email.service';
+import { passwordResetEmail } from '../email/email.templates';
 import type { UserRecord } from '../users/entities/user.entity';
 import { toPublic } from '../users/entities/user.entity';
 
@@ -57,6 +59,7 @@ export class AuthService {
     private readonly config: ConfigService<AppConfig, true>,
     private readonly totp: TotpService,
     private readonly db: DynamoDbService,
+    private readonly email: EmailService,
   ) {}
 
   private revokedJtiPk(jti: string) { return `REVOKED_JTI#${jti}`; }
@@ -116,42 +119,13 @@ export class AuthService {
       createdAt:  now.toISOString(),
     });
 
-    // Always log the code for debugging
-    this.logger.log(`[PwdReset] code=${code} email=${email}`);
+    const mail = passwordResetEmail(code);
+    const sent = await this.email.send(email, mail.subject, mail.html);
 
-    // Send via Brevo REST API (no npm package needed, works for all emails)
-    const brevoKey = process.env.BREVO_API_KEY;
-    if (brevoKey) {
-      try {
-        const res = await fetch('https://api.brevo.com/v3/smtp/email', {
-          method: 'POST',
-          headers: { 'api-key': brevoKey, 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            sender:      { name: 'Arena dos Mantos', email: 'noreply@arenadosmantos.app.br' },
-            to:          [{ email }],
-            subject:     'Redefinição de senha — Arena dos Mantos',
-            htmlContent: `
-              <div style="font-family:sans-serif;max-width:480px;margin:0 auto">
-                <h2 style="color:#335336">Redefinição de senha</h2>
-                <p>Seu código de verificação é:</p>
-                <div style="font-size:36px;font-weight:bold;letter-spacing:8px;color:#D4AF37;padding:16px 0">${code}</div>
-                <p style="color:#666">Este código expira em <strong>15 minutos</strong>.</p>
-                <p style="color:#666;font-size:12px">Se você não solicitou a redefinição de senha, ignore este e-mail.</p>
-              </div>
-            `,
-          }),
-        });
-        if (res.ok) {
-          this.logger.log(`[PwdReset] email sent to ${email}`);
-        } else {
-          const err = await res.text();
-          this.logger.error(`[PwdReset] Brevo error: ${err}`);
-        }
-      } catch (e) {
-        this.logger.error(`[PwdReset] fetch failed: ${e}`);
-      }
-    } else {
-      this.logger.warn('[PwdReset] BREVO_API_KEY not set — email not sent, check logs for code');
+    // Without a provider configured the code would be unrecoverable, so fall
+    // back to the log. Never logged once mail is actually working.
+    if (!sent.ok) {
+      this.logger.warn(`[PwdReset] email not delivered — code=${code} email=${email}`);
     }
   }
 

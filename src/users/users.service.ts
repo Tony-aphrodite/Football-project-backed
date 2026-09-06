@@ -2,6 +2,8 @@ import { ConflictException, Injectable, NotFoundException } from '@nestjs/common
 import { ulid } from 'ulid';
 
 import { DynamoDbService } from '../dynamodb/dynamodb.service';
+import { EmailService } from '../email/email.service';
+import { welcomeEmail } from '../email/email.templates';
 import { Keys } from '../dynamodb/keys';
 import { toPublic, type UserRecord, type UserPublic } from './entities/user.entity';
 
@@ -17,7 +19,10 @@ interface CreateUserInput {
 
 @Injectable()
 export class UsersService {
-  constructor(private readonly db: DynamoDbService) {}
+  constructor(
+    private readonly db: DynamoDbService,
+    private readonly email: EmailService,
+  ) {}
 
   async findById(userId: string): Promise<UserRecord | undefined> {
     const k = Keys.user(userId);
@@ -135,6 +140,11 @@ export class UsersService {
       }
       throw err;
     }
+
+    // Single creation path, so this covers email signup and Google sign-in.
+    // Fire-and-forget: a mail failure must never fail the registration.
+    const welcome = welcomeEmail(profile.displayName);
+    void this.email.send(profile.email, welcome.subject, welcome.html);
 
     return profile;
   }

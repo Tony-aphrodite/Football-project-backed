@@ -5,6 +5,7 @@ import { APP_GUARD } from '@nestjs/core';
 
 import configuration, { validateEnv } from './config/configuration';
 import { DynamoDbModule } from './dynamodb/dynamodb.module';
+import { EmailModule } from './email/email.module';
 import { UsersModule } from './users/users.module';
 import { AuthModule } from './auth/auth.module';
 import { HealthModule } from './health/health.module';
@@ -38,6 +39,7 @@ import { CartModule } from './cart/cart.module';
     ]),
 
     DynamoDbModule,
+    EmailModule,
     UsersModule,
     AuthModule,
     HealthModule,
