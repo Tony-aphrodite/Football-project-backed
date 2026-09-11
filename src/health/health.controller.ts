@@ -27,12 +27,15 @@ export class HealthController {
   emailStatus(): {
     configured: boolean;
     provider: string;
+    fallbacks: string[];
     from: string;
     build: string;
   } {
+    const order = this.email.configuredProviders;
     return {
       configured: this.email.isEnabled,
       provider:   this.email.provider,
+      fallbacks:  order.slice(1),
       from:       process.env.EMAIL_FROM ?? 'noreply@arenadosmantos.app.br',
       // Lets us confirm which build is actually live, rather than assuming a
       // push to the deploy repo resulted in a deploy.
