@@ -1,5 +1,6 @@
 import { Controller, Get } from '@nestjs/common';
 import { SkipThrottle } from '@nestjs/throttler';
+import { EmailService } from '../email/email.service';
 
 /**
  * Public health endpoint consumed by Railway's healthcheck (see railway.toml)
@@ -9,8 +10,33 @@ import { SkipThrottle } from '@nestjs/throttler';
 @Controller('health')
 @SkipThrottle()
 export class HealthController {
+  constructor(private readonly email: EmailService) {}
+
   @Get()
   ping(): { status: 'ok'; timestamp: string } {
     return { status: 'ok', timestamp: new Date().toISOString() };
+  }
+
+  /**
+   * Whether transactional email can actually be sent. Sending is deliberately
+   * silent on failure — an email must never break an order — which once let
+   * password-reset mail stay broken unnoticed. This makes the state checkable
+   * without digging through logs. Never exposes the key itself.
+   */
+  @Get('email')
+  emailStatus(): {
+    configured: boolean;
+    provider: string;
+    from: string;
+    build: string;
+  } {
+    return {
+      configured: this.email.isEnabled,
+      provider:   this.email.provider,
+      from:       process.env.EMAIL_FROM ?? 'noreply@arenadosmantos.app.br',
+      // Lets us confirm which build is actually live, rather than assuming a
+      // push to the deploy repo resulted in a deploy.
+      build:      process.env.RAILWAY_GIT_COMMIT_SHA?.slice(0, 7) ?? 'unknown',
+    };
   }
 }
