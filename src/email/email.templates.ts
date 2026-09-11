@@ -13,6 +13,8 @@ const TEXTO   = '#2E2A24';
 const SUAVE   = '#6B6357';
 
 const SITE = 'https://www.arenadosmantos.app.br';
+// Must be an absolute public URL — email clients cannot read bundled assets.
+const LOGO = `${SITE}/stadium.png`;
 
 function esc(v: string | number | undefined | null): string {
   return String(v ?? '')
@@ -64,8 +66,19 @@ function layout(heading: string, inner: string): string {
              style="max-width:560px;background:#FFFFFF;border-radius:16px;overflow:hidden;
                     font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif">
 
-        <tr><td style="background:${VERDE};padding:22px 28px">
-          <div style="color:${DOURADO};font-size:19px;font-weight:800;letter-spacing:1px">ARENA DOS MANTOS</div>
+        <tr><td style="background:${VERDE};padding:20px 28px">
+          <table role="presentation" cellpadding="0" cellspacing="0"><tr>
+            <td style="padding-right:12px;vertical-align:middle">
+              <img src="${LOGO}" width="44" height="44" alt=""
+                   style="display:block;width:44px;height:44px;border:0" />
+            </td>
+            <td style="vertical-align:middle">
+              <!-- Text wordmark, not an image: most clients block images by
+                   default, and the brand must still be visible when they do. -->
+              <div style="color:${DOURADO};font-size:18px;font-weight:800;letter-spacing:1px;line-height:22px">ARENA DOS MANTOS</div>
+              <div style="color:rgba(255,255,255,0.55);font-size:11px;letter-spacing:.5px">Em prol do colecionismo profissional</div>
+            </td>
+          </tr></table>
         </td></tr>
 
         <tr><td style="padding:28px">
