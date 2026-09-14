@@ -42,6 +42,8 @@ export interface UserRecord {
   sellerCep?:     string;
   sellerRua?:     string;
   sellerNumero?:  string;
+  sellerComplemento?: string;
+  sellerBairro?:  string;
   sellerCidade?:  string;
   sellerEstado?:  string;
   // Pagar.me recipient ID for payment split
@@ -96,6 +98,8 @@ export interface UserPublic {
   sellerCep?:     string;
   sellerRua?:     string;
   sellerNumero?:  string;
+  sellerComplemento?: string;
+  sellerBairro?:  string;
   sellerCidade?:  string;
   sellerEstado?:  string;
   pagarmeRecipientId?: string;
@@ -130,6 +134,8 @@ export function toPublic(u: UserRecord): UserPublic {
     sellerCep:     u.sellerCep,
     sellerRua:     u.sellerRua,
     sellerNumero:  u.sellerNumero,
+    sellerComplemento: u.sellerComplemento,
+    sellerBairro:  u.sellerBairro,
     sellerCidade:  u.sellerCidade,
     sellerEstado:  u.sellerEstado,
     pagarmeRecipientId: u.pagarmeRecipientId,

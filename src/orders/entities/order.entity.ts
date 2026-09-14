@@ -31,6 +31,12 @@ export interface OrderRecord {
   shippingCents:  number;
   totalCents:     number;
   buyerCep?:          string;
+  buyerRua?:          string;
+  buyerNumero?:       string;
+  buyerComplemento?:  string;
+  buyerBairro?:       string;
+  buyerCidade?:       string;
+  buyerEstado?:       string;
   shippingServiceId?: number;
   sellerCep?:         string;
   couponCode?:   string;
@@ -86,6 +92,12 @@ export interface OrderPublic {
   shippingCents:  number;
   totalCents:     number;
   buyerCep?:          string;
+  buyerRua?:          string;
+  buyerNumero?:       string;
+  buyerComplemento?:  string;
+  buyerBairro?:       string;
+  buyerCidade?:       string;
+  buyerEstado?:       string;
   shippingServiceId?: number;
   sellerCep?:         string;
   couponCode?:    string;
@@ -126,6 +138,8 @@ export function toOrderPublic(o: OrderRecord): OrderPublic {
     photoKeys: o.photoKeys, deliveryMethod: o.deliveryMethod,
     shippingCents: o.shippingCents, totalCents: o.totalCents,
     buyerCep: o.buyerCep, shippingServiceId: o.shippingServiceId, sellerCep: o.sellerCep,
+    buyerRua: o.buyerRua, buyerNumero: o.buyerNumero, buyerComplemento: o.buyerComplemento,
+    buyerBairro: o.buyerBairro, buyerCidade: o.buyerCidade, buyerEstado: o.buyerEstado,
     couponCode: o.couponCode, discountPct: o.discountPct, discountCents: o.discountCents,
     status: o.status,
     paymentMethod:    o.paymentMethod,

@@ -262,22 +262,37 @@ export class UsersService {
   async updateSellerCep(
     userId: string, cep: string,
     rua?: string, numero?: string, cidade?: string, estado?: string,
+    complemento?: string, bairro?: string,
   ): Promise<UserPublic> {
     const u = await this.getById(userId);
-    const cleaned = cep.replace(/\D/g, '').slice(0, 8);
+    // Resolve every field once so the response matches what was stored —
+    // an omitted field used to come back undefined while its saved value stayed.
+    const next = {
+      sellerCep:         cep.replace(/\D/g, '').slice(0, 8),
+      sellerRua:         rua         ?? u.sellerRua         ?? '',
+      sellerNumero:      numero      ?? u.sellerNumero      ?? '',
+      sellerComplemento: complemento ?? u.sellerComplemento ?? '',
+      sellerBairro:      bairro      ?? u.sellerBairro      ?? '',
+      sellerCidade:      cidade      ?? u.sellerCidade      ?? '',
+      sellerEstado:      (estado ?? u.sellerEstado ?? '').toUpperCase(),
+    };
     await this.db.update({
       Key: { PK: u.PK, SK: u.SK },
-      UpdateExpression: 'SET sellerCep = :c, sellerRua = :r, sellerNumero = :n, sellerCidade = :ci, sellerEstado = :e, updatedAt = :now',
+      UpdateExpression:
+        'SET sellerCep = :c, sellerRua = :r, sellerNumero = :n, sellerComplemento = :co, ' +
+        'sellerBairro = :b, sellerCidade = :ci, sellerEstado = :e, updatedAt = :now',
       ExpressionAttributeValues: {
-        ':c':   cleaned,
-        ':r':   rua    ?? u.sellerRua    ?? '',
-        ':n':   numero ?? u.sellerNumero ?? '',
-        ':ci':  cidade ?? u.sellerCidade ?? '',
-        ':e':   estado ?? u.sellerEstado ?? '',
+        ':c':   next.sellerCep,
+        ':r':   next.sellerRua,
+        ':n':   next.sellerNumero,
+        ':co':  next.sellerComplemento,
+        ':b':   next.sellerBairro,
+        ':ci':  next.sellerCidade,
+        ':e':   next.sellerEstado,
         ':now': new Date().toISOString(),
       },
     });
-    return toPublic({ ...u, sellerCep: cleaned, sellerRua: rua, sellerNumero: numero, sellerCidade: cidade, sellerEstado: estado });
+    return toPublic({ ...u, ...next });
   }
 
   async updateDadosPessoais(userId: string, data: {

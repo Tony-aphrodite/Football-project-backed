@@ -76,6 +76,22 @@ export class OrdersService {
     // Use the shipping price the buyer saw at checkout; fall back to 0 for Em Mãos
     const shippingCents = dto.deliveryMethod === 'CORREIOS' ? (dto.shippingCents ?? 0) : 0;
 
+    // A Correios order must carry a complete delivery address — without it no
+    // label can be bought and the jersey cannot be posted.
+    if (dto.deliveryMethod === 'CORREIOS') {
+      const cep = (dto.buyerCep ?? '').replace(/\D/g, '');
+      const incomplete =
+        cep.length !== 8 ||
+        !dto.buyerRua?.trim() || !dto.buyerNumero?.trim() ||
+        !dto.buyerBairro?.trim() || !dto.buyerCidade?.trim() ||
+        (dto.buyerEstado ?? '').trim().length !== 2;
+      if (incomplete) {
+        throw new BadRequestException(
+          'Endereço de entrega incompleto. Atualize o app e preencha rua, número, bairro, cidade e UF.',
+        );
+      }
+    }
+
     // Apply coupon discount if provided
     let discountPct   = 0;
     let discountCents = 0;
@@ -123,6 +139,12 @@ export class OrdersService {
       shippingCents,
       totalCents,
       buyerCep:          dto.buyerCep,
+      buyerRua:          dto.buyerRua?.trim(),
+      buyerNumero:       dto.buyerNumero?.trim(),
+      buyerComplemento:  dto.buyerComplemento?.trim() || undefined,
+      buyerBairro:       dto.buyerBairro?.trim(),
+      buyerCidade:       dto.buyerCidade?.trim(),
+      buyerEstado:       dto.buyerEstado?.trim().toUpperCase(),
       shippingServiceId: dto.shippingServiceId,
       sellerCep,
       couponCode,

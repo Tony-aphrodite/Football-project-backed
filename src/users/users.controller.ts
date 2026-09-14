@@ -17,6 +17,8 @@ class UpdateCepDto {
   @IsOptional() @IsString() numero?: string;
   @IsOptional() @IsString() cidade?: string;
   @IsOptional() @IsString() estado?: string;
+  @IsOptional() @IsString() complemento?: string;
+  @IsOptional() @IsString() bairro?: string;
 }
 
 class SetRecipientDto {
@@ -71,7 +73,7 @@ export class UsersController {
   @UseGuards(JwtAuthGuard)
   @Patch('me/cep')
   updateCep(@Body() dto: UpdateCepDto, @Request() req: { user: JwtPayload }) {
-    return this.users.updateSellerCep(req.user.sub, dto.cep, dto.rua, dto.numero, dto.cidade, dto.estado);
+    return this.users.updateSellerCep(req.user.sub, dto.cep, dto.rua, dto.numero, dto.cidade, dto.estado, dto.complemento, dto.bairro);
   }
 
   @UseGuards(JwtAuthGuard)

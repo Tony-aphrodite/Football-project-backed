@@ -422,8 +422,32 @@ export class PaymentsService {
 
   private async purchaseLabelAsync(order: OrderRecord): Promise<void> {
     try {
-      const seller = await this.users.findById(order.sellerId).catch(() => null);
-      const fromCep = seller?.sellerCep ?? order.sellerCep ?? '01310100';
+      const [seller, buyer] = await Promise.all([
+        this.users.findById(order.sellerId).catch(() => null),
+        this.users.findById(order.buyerId).catch(() => null),
+      ]);
+
+      // Melhor Envio refuses a label without a complete address on both sides.
+      // Stop with the exact reason instead of making a call that cannot succeed —
+      // incomplete addresses are why no label had ever been generated.
+      const missing = (fields: Record<string, string | undefined>) =>
+        Object.entries(fields).filter(([, v]) => !v?.trim()).map(([k]) => k);
+      const sellerMissing = missing({
+        CEP: seller?.sellerCep, rua: seller?.sellerRua, numero: seller?.sellerNumero,
+        bairro: seller?.sellerBairro, cidade: seller?.sellerCidade, UF: seller?.sellerEstado,
+      });
+      const buyerMissing = missing({
+        CEP: order.buyerCep, rua: order.buyerRua, numero: order.buyerNumero,
+        bairro: order.buyerBairro, cidade: order.buyerCidade, UF: order.buyerEstado,
+      });
+      if (!seller || sellerMissing.length || buyerMissing.length) {
+        this.logger.error(
+          `Label NOT purchased for order ${order.orderId} — incomplete address. ` +
+          `Seller missing: [${sellerMissing.join(', ') || 'none'}]; ` +
+          `buyer missing: [${buyerMissing.join(', ') || 'none'}]`,
+        );
+        return;
+      }
 
       // Get listing for weight info
       const listingKey = Keys.listing(order.listingId);
@@ -433,14 +457,36 @@ export class PaymentsService {
       const serviceId = order.shippingServiceId ?? 1;
 
       const result = await this.shipping.purchaseLabel({
-        orderId:      order.orderId,
-        fromCep,
-        toCep:        order.buyerCep!,
-        fromName:     order.sellerName,
-        toName:       order.buyerName,
+        orderId: order.orderId,
+        from: {
+          name:       order.sellerName,
+          phone:      seller.phoneE164 ?? seller.contactPhone,
+          email:      seller.email,
+          document:   seller.cpf,
+          postalCode: seller.sellerCep!,
+          address:    seller.sellerRua!,
+          number:     seller.sellerNumero!,
+          complement: seller.sellerComplemento,
+          district:   seller.sellerBairro!,
+          city:       seller.sellerCidade!,
+          stateAbbr:  seller.sellerEstado!,
+        },
+        to: {
+          name:       order.buyerName,
+          phone:      buyer?.phoneE164 ?? buyer?.contactPhone,
+          email:      buyer?.email,
+          document:   buyer?.cpf,
+          postalCode: order.buyerCep!,
+          address:    order.buyerRua!,
+          number:     order.buyerNumero!,
+          complement: order.buyerComplemento,
+          district:   order.buyerBairro!,
+          city:       order.buyerCidade!,
+          stateAbbr:  order.buyerEstado!,
+        },
         serviceId,
         weightGrams:  listing?.weightGrams ?? 300,
-        productName:  `${order.teamName} ${order.season}`,
+        productName:  `${order.teamName} ${order.season ?? ''}`.trim(),
         productValue: order.priceCents / 100,
       });
 
@@ -490,7 +536,6 @@ export class PaymentsService {
         );
 
         // Notify buyer that item was shipped
-        const buyer = await this.users.findById(order.buyerId).catch(() => null);
         void this.notifications.send(
           buyer?.expoPushToken,
           '📦 Seu pedido foi enviado!',
@@ -508,9 +553,8 @@ export class PaymentsService {
 
         // The Correios label is bought automatically but was only reachable
         // inside the app — send it to the seller so they can just print it.
-        const sellerForLabel = await this.users.findById(order.sellerId).catch(() => null);
         const labelMail = shippingLabelEmail(shipData);
-        void this.email.send(sellerForLabel?.email, labelMail.subject, labelMail.html);
+        void this.email.send(seller.email, labelMail.subject, labelMail.html);
       }
     } catch (err) {
       this.logger.error(`Label purchase failed for order ${order.orderId}`, err);

@@ -19,6 +19,21 @@ export interface LabelResult {
   actualCostCents:     number;   // actual amount paid to Melhor Envio
 }
 
+/** A complete Brazilian address, as Melhor Envio requires it to issue a label. */
+export interface ShippingAddress {
+  name:        string;
+  phone?:      string;
+  email?:      string;
+  document?:   string;   // CPF
+  postalCode:  string;
+  address:     string;   // rua
+  number:      string;
+  complement?: string;
+  district:    string;   // bairro
+  city:        string;
+  stateAbbr:   string;   // UF
+}
+
 interface MelhorEnvioQuote {
   id:            number;
   name:          string;
@@ -140,12 +155,32 @@ export class ShippingService {
 
   // ── Label purchase ──────────────────────────────────────────────────────────
 
+  /** Map our address shape onto the fields Melhor Envio expects. */
+  private toMelhorEnvio(a: ShippingAddress) {
+    const digits = (v?: string) => (v ?? '').replace(/\D/g, '');
+    // Stored phones are E.164 (+55…); Melhor Envio wants the national number.
+    let phone = digits(a.phone);
+    if (phone.length > 11 && phone.startsWith('55')) phone = phone.slice(2);
+    return {
+      name:        a.name,
+      phone:       phone || undefined,
+      email:       a.email || undefined,
+      document:    digits(a.document) || undefined,
+      address:     a.address,
+      complement:  a.complement || undefined,
+      number:      a.number,
+      district:    a.district,
+      city:        a.city,
+      state_abbr:  a.stateAbbr.toUpperCase(),
+      country_id:  'BR',
+      postal_code: digits(a.postalCode),
+    };
+  }
+
   async purchaseLabel(params: {
     orderId:      string;
-    fromCep:      string;
-    toCep:        string;
-    fromName:     string;
-    toName:       string;
+    from:         ShippingAddress;
+    to:           ShippingAddress;
     serviceId:    number;
     weightGrams:  number;
     productName:  string;
@@ -160,14 +195,10 @@ export class ShippingService {
       const cartBody = {
         service:  params.serviceId,
         agency:   null,
-        from: {
-          name:        params.fromName,
-          postal_code: params.fromCep.replace(/\D/g, ''),
-        },
-        to: {
-          name:        params.toName,
-          postal_code: params.toCep.replace(/\D/g, ''),
-        },
+        // Only name + postal code used to be sent, so Melhor Envio rejected
+        // every cart and no label was ever issued.
+        from: this.toMelhorEnvio(params.from),
+        to:   this.toMelhorEnvio(params.to),
         package: {
           height: 4,
           width:  25,
@@ -183,7 +214,9 @@ export class ShippingService {
           receipt:        false,
           own_hand:       false,
           reverse:        false,
-          non_commercial: false,
+          // Sellers are individuals posting without an NF-e, which Melhor Envio
+          // only accepts as a non-commercial shipment (declaração de conteúdo).
+          non_commercial: true,
           platform:       'Arena dos Mantos',
           tags: [{ tag: params.orderId, url: null }],
         },
