@@ -1,9 +1,10 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ulid } from 'ulid';
 
 import { DynamoDbService } from '../dynamodb/dynamodb.service';
 import { EmailService } from '../email/email.service';
-import { welcomeEmail } from '../email/email.templates';
+import { bankChangedNoticeEmail, welcomeEmail } from '../email/email.templates';
+import { assertReauthenticated } from '../auth/reauth';
 import { Keys } from '../dynamodb/keys';
 import { toPublic, type UserRecord, type UserPublic } from './entities/user.entity';
 
@@ -17,8 +18,13 @@ interface CreateUserInput {
   marketingConsent?: boolean;
 }
 
+/** Withdrawals pause this long after a bank account change. */
+const BANK_CHANGE_HOLD_MS = 48 * 60 * 60 * 1000;
+
 @Injectable()
 export class UsersService {
+  private readonly logger = new Logger(UsersService.name);
+
   constructor(
     private readonly db: DynamoDbService,
     private readonly email: EmailService,
@@ -304,25 +310,22 @@ export class UsersService {
 
   async updateDadosPessoais(userId: string, data: {
     nomeCompleto: string;
-    email: string;
-    phoneE164?: string;
-    cpf?: string;
   }): Promise<UserPublic> {
     const u = await this.getById(userId);
     if (u.dadosPessoaisLockedAt) throw new Error('LOCKED');
+    // The e-mail is deliberately not written here: it must be verified, and
+    // the login lookup row must move with it — see AuthService.confirmEmailChange.
     const now = new Date().toISOString();
     await this.db.update({
       Key: { PK: u.PK, SK: u.SK },
-      UpdateExpression: 'SET nomeCompleto = :n, #em = :e, dadosPessoaisLockedAt = :l, updatedAt = :now',
-      ExpressionAttributeNames: { '#em': 'email' },
+      UpdateExpression: 'SET nomeCompleto = :n, dadosPessoaisLockedAt = :l, updatedAt = :now',
       ExpressionAttributeValues: {
         ':n': data.nomeCompleto,
-        ':e': data.email,
         ':l': now,
         ':now': now,
       },
     });
-    return toPublic({ ...u, nomeCompleto: data.nomeCompleto, email: data.email, dadosPessoaisLockedAt: now });
+    return toPublic({ ...u, nomeCompleto: data.nomeCompleto, dadosPessoaisLockedAt: now });
   }
 
   async updateBankData(userId: string, data: {
@@ -376,9 +379,103 @@ export class UsersService {
     return { ...bal, hasRecipient: true };
   }
 
+  /**
+   * Swap the bank account on the seller's existing Pagar.me recipient.
+   * Requires re-authentication; name and CPF always come from the locked
+   * profile. The account holder is e-mailed, and withdrawals pause for
+   * BANK_CHANGE_HOLD_MS so a hijacker cannot empty the balance before the
+   * real owner sees that e-mail.
+   */
+  async changeBankData(userId: string, data: {
+    bankCode: string;
+    bankAgency: string;
+    bankAgencyDigit?: string;
+    bankAccount: string;
+    bankAccountDigit: string;
+    password?: string;
+    totpCode?: string;
+  }, pagarme: import('../payments/pagarme.service').PagarmeService): Promise<UserPublic> {
+    const u = await this.getById(userId);
+    if (!u.bankLockedAt || !u.pagarmeRecipientId) {
+      throw new BadRequestException('Você ainda não tem conta bancária cadastrada.');
+    }
+    if (!u.nomeCompleto || !u.cpf) throw new BadRequestException('Preencha os Dados Pessoais primeiro');
+
+    await assertReauthenticated(u, data);
+
+    const same =
+      u.bankCode === data.bankCode && u.bankAgency === data.bankAgency &&
+      (u.bankAgencyDigit ?? '') === (data.bankAgencyDigit ?? '') &&
+      u.bankAccount === data.bankAccount && u.bankAccountDigit === data.bankAccountDigit;
+    if (same) throw new BadRequestException('Esta já é a sua conta bancária cadastrada.');
+
+    try {
+      await pagarme.updateRecipientBankAccount(u.pagarmeRecipientId, {
+        name: u.nomeCompleto,
+        cpf: u.cpf,
+        ...data,
+      });
+    } catch (err) {
+      const status = (err as { status?: number }).status;
+      const body   = (err as { body?: string }).body ?? '';
+      if (body.includes('Second authentication factor')) {
+        this.logger.error('Pagar.me refused bank change: server IP is not on the allow list');
+        throw new BadRequestException('Não foi possível trocar a conta agora. Tente mais tarde ou fale com contato@arenadosmantos.app.br.');
+      }
+      if (status === 400 || status === 422) {
+        throw new BadRequestException('A Pagar.me recusou esta conta. Confira banco, agência e conta — a conta precisa estar no seu CPF.');
+      }
+      throw err;
+    }
+
+    const now = new Date().toISOString();
+    await this.db.update({
+      Key: { PK: u.PK, SK: u.SK },
+      UpdateExpression: [
+        'SET bankCode = :bc, bankAgency = :ba, bankAgencyDigit = :bad,',
+        'bankAccount = :bac, bankAccountDigit = :bacd, bankChangedAt = :now, updatedAt = :now',
+      ].join(' '),
+      ExpressionAttributeValues: {
+        ':bc':   data.bankCode,
+        ':ba':   data.bankAgency,
+        ':bad':  data.bankAgencyDigit ?? '',
+        ':bac':  data.bankAccount,
+        ':bacd': data.bankAccountDigit,
+        ':now':  now,
+      },
+    });
+    this.logger.log(`Bank account changed for user ${userId}`);
+
+    const notice = bankChangedNoticeEmail({
+      bankCode:     data.bankCode,
+      accountLast4: data.bankAccount.slice(-4),
+      holdHours:    BANK_CHANGE_HOLD_MS / 3_600_000,
+    });
+    void this.email.send(u.email, notice.subject, notice.html);
+
+    return toPublic({
+      ...u,
+      bankCode: data.bankCode,
+      bankAgency: data.bankAgency,
+      bankAgencyDigit: data.bankAgencyDigit ?? '',
+      bankAccount: data.bankAccount,
+      bankAccountDigit: data.bankAccountDigit,
+      bankChangedAt: now,
+    });
+  }
+
   async requestWithdrawal(userId: string, amountCents: number, pagarme: import('../payments/pagarme.service').PagarmeService): Promise<{ id: string; status: string; amount: number }> {
     const u = await this.getById(userId);
     if (!u.pagarmeRecipientId) throw new Error('No recipient registered');
+    if (u.bankChangedAt) {
+      const releaseAt = new Date(new Date(u.bankChangedAt).getTime() + BANK_CHANGE_HOLD_MS);
+      if (releaseAt > new Date()) {
+        const when = releaseAt.toLocaleString('pt-BR', {
+          timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
+        });
+        throw new BadRequestException(`Por segurança, saques ficam bloqueados por 48 horas após trocar a conta bancária. Liberado em ${when}.`);
+      }
+    }
     return pagarme.createWithdrawal(u.pagarmeRecipientId, amountCents);
   }
 

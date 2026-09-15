@@ -150,6 +150,62 @@ export function passwordResetEmail(code: string): EmailContent {
   };
 }
 
+/** Sent to the NEW address: typing the code back proves the person owns it. */
+export function emailChangeCodeEmail(code: string): EmailContent {
+  return {
+    subject: 'Confirme seu novo e-mail — Arena dos Mantos',
+    html: layout('Confirme seu novo e-mail', `
+      ${p('Para trocar o e-mail da sua conta na Arena dos Mantos, digite este código no app:')}
+      <div style="font-size:34px;font-weight:800;letter-spacing:10px;color:${DOURADO};
+                  background:#FAF8F4;border:1px solid #E5DCC4;border-radius:12px;
+                  padding:18px;text-align:center;margin:18px 0">${esc(code)}</div>
+      ${p(`Este código expira em <strong>15 minutos</strong>.`)}
+      ${p(`<span style="color:${SUAVE};font-size:13px">Se você não pediu esta troca, ignore este e-mail — nada será alterado.</span>`)}
+    `),
+  };
+}
+
+/** Sent to the OLD address once the change is done, so a hijack does not go unnoticed. */
+export function emailChangedNoticeEmail(maskedNewEmail: string): EmailContent {
+  return {
+    subject: 'O e-mail da sua conta foi alterado — Arena dos Mantos',
+    html: layout('Seu e-mail foi alterado', `
+      ${p(`O e-mail da sua conta na Arena dos Mantos foi alterado para <strong>${esc(maskedNewEmail)}</strong>.`)}
+      ${p('A partir de agora, avisos de pedidos e o login por e-mail usam o novo endereço.')}
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+             style="background:#FEF3C7;border:1px solid #FDE68A;border-radius:12px;padding:14px 16px;margin:16px 0">
+        <tr><td style="color:#92400E;font-size:14px;line-height:21px">
+          <strong>Não foi você?</strong> Entre em contato imediatamente com
+          <a href="mailto:contato@arenadosmantos.app.br" style="color:#92400E;font-weight:700">contato@arenadosmantos.app.br</a>.
+        </td></tr>
+      </table>
+    `),
+  };
+}
+
+/** Sent to the account e-mail after the payout bank account is replaced. */
+export function bankChangedNoticeEmail(d: { bankCode: string; accountLast4: string; holdHours: number }): EmailContent {
+  return {
+    subject: 'Sua conta bancária foi alterada — Arena dos Mantos',
+    html: layout('Conta bancária alterada', `
+      ${p('A conta bancária que recebe os valores das suas vendas na Arena dos Mantos foi alterada.')}
+      ${details([
+        ['Banco', d.bankCode],
+        ['Conta', `•••• ${d.accountLast4}`],
+      ])}
+      ${p(`Por segurança, novos saques ficam bloqueados por <strong>${d.holdHours} horas</strong>.`)}
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+             style="background:#FEF3C7;border:1px solid #FDE68A;border-radius:12px;padding:14px 16px;margin:16px 0">
+        <tr><td style="color:#92400E;font-size:14px;line-height:21px">
+          <strong>Não foi você?</strong> Entre em contato imediatamente com
+          <a href="mailto:contato@arenadosmantos.app.br" style="color:#92400E;font-weight:700">contato@arenadosmantos.app.br</a>
+          para bloquearmos a conta.
+        </td></tr>
+      </table>
+    `),
+  };
+}
+
 // ── Order flow ────────────────────────────────────────────────────────────────
 
 /** Seller: a buyer paid. */
@@ -307,8 +363,9 @@ export function orderPaidBuyerEmail(d: OrderEmailData): EmailContent {
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
              style="background:#FEF3C7;border:1px solid #FDE68A;border-radius:12px;padding:14px 16px;margin:16px 0">
         <tr><td style="color:#92400E;font-size:14px;line-height:21px">
-          <strong>Não reconhece esta compra?</strong> Responda este e-mail agora ou escreva para
-          contato@arenadosmantos.app.br. O valor fica retido e ainda não foi repassado ao vendedor.
+          <strong>Se você não fez esta compra</strong>, entre em contato com
+          <a href="mailto:contato@arenadosmantos.app.br" style="color:#92400E;font-weight:700">contato@arenadosmantos.app.br</a>
+          ou responda este e-mail agora. O valor fica retido e ainda não foi repassado ao vendedor.
         </td></tr>
       </table>
     `),

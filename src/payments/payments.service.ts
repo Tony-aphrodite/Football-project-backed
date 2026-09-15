@@ -10,6 +10,7 @@ import { ConfigService } from '@nestjs/config';
 import { DynamoDbService } from '../dynamodb/dynamodb.service';
 import { Keys } from '../dynamodb/keys';
 import { OrderRecord } from '../orders/entities/order.entity';
+import type { SavedCard, UserRecord } from '../users/entities/user.entity';
 import { PagarmeService } from './pagarme.service';
 import { ShippingService } from '../shipping/shipping.service';
 import { UsersService } from '../users/users.service';
@@ -178,11 +179,13 @@ export class PaymentsService {
     dto: {
       orderId:       string;
       installments:  number;
-      cardNumber:    string;
-      cardHolderName: string;
-      cardExpMonth:  number;
-      cardExpYear:   number;
-      cardCvv:       string;
+      useSavedCard?: boolean;
+      saveCard?:     boolean;
+      cardNumber?:   string;
+      cardHolderName?: string;
+      cardExpMonth?: number;
+      cardExpYear?:  number;
+      cardCvv?:      string;
     },
   ): Promise<CardPaymentResult> {
     const orderKey = Keys.order(dto.orderId);
@@ -198,10 +201,7 @@ export class PaymentsService {
 
     // Fetch buyer data — required by Pagar.me
     const buyerKey = Keys.user(buyerId);
-    const buyer = await this.db.get<{ cpf?: string; displayName: string; phoneE164?: string; email?: string }>(
-      buyerKey.PK,
-      buyerKey.SK,
-    );
+    const buyer = await this.db.get<UserRecord>(buyerKey.PK, buyerKey.SK);
     if (!buyer) throw new NotFoundException('Buyer profile not found');
 
     const cpf   = buyer.cpf ?? '00000000000';
@@ -219,6 +219,63 @@ export class PaymentsService {
     const arenaRecipientId  = this.config.get('pagarme.arenaRecipientId', { infer: true });
     const sellerRecipientId = seller?.pagarmeRecipientId;
 
+    // Which card: the saved one, a typed one kept in the vault, or a typed one
+    // used only for this purchase.
+    let vault: { customerId: string; cardId: string } | undefined;
+    let cardToSave: SavedCard | undefined;
+
+    if (dto.useSavedCard) {
+      if (!buyer.savedCard || !buyer.pagarmeCustomerId) {
+        throw new BadRequestException('Nenhum cartão salvo. Digite os dados do cartão.');
+      }
+      vault = { customerId: buyer.pagarmeCustomerId, cardId: buyer.savedCard.cardId };
+    } else {
+      if (!dto.cardNumber || !dto.cardHolderName || !dto.cardExpMonth || !dto.cardExpYear || !dto.cardCvv) {
+        throw new BadRequestException('Preencha os dados do cartão.');
+      }
+      if (dto.saveCard) {
+        // Saving is a convenience: if the vault refuses, still charge the typed card.
+        try {
+          const customerId = buyer.pagarmeCustomerId ?? (await this.pagarme.createCustomer({
+            name:      buyer.nomeCompleto ?? buyer.displayName,
+            email:     buyer.email ?? `${cpf}@arenadosmantos.app`,
+            cpf,
+            phoneE164: buyer.phoneE164,
+          })).id;
+          if (!buyer.pagarmeCustomerId) {
+            await this.db.update({
+              Key: { PK: buyerKey.PK, SK: buyerKey.SK },
+              UpdateExpression: 'SET pagarmeCustomerId = :c',
+              ExpressionAttributeValues: { ':c': customerId },
+            });
+          }
+          const card = await this.pagarme.createCustomerCard(customerId, {
+            number:     dto.cardNumber,
+            holderName: dto.cardHolderName,
+            expMonth:   dto.cardExpMonth,
+            expYear:    dto.cardExpYear,
+            cvv:        dto.cardCvv,
+            billingAddress: buyer.sellerCep && buyer.sellerRua && buyer.sellerCidade && buyer.sellerEstado ? {
+              line1:   `${buyer.sellerNumero ?? 'S/N'}, ${buyer.sellerRua}, ${buyer.sellerBairro ?? ''}`,
+              zipCode: buyer.sellerCep,
+              city:    buyer.sellerCidade,
+              state:   buyer.sellerEstado,
+            } : undefined,
+          });
+          vault = { customerId, cardId: card.id };
+          cardToSave = {
+            cardId:   card.id,
+            brand:    card.brand,
+            last4:    card.last_four_digits,
+            expMonth: card.exp_month,
+            expYear:  card.exp_year,
+          };
+        } catch (err) {
+          this.logger.warn(`Could not save card for ${buyerId}, charging it directly`, err);
+        }
+      }
+    }
+
     const pagarmeOrder = await this.pagarme.createCardOrder({
       externalCode:    `ARENA-${dto.orderId}`,
       amountCents:     order.totalCents,
@@ -228,11 +285,15 @@ export class PaymentsService {
       customerEmail:   buyer.email,
       itemDescription,
       installments:    dto.installments,
-      cardNumber:      dto.cardNumber,
-      cardHolderName:  dto.cardHolderName,
-      cardExpMonth:    dto.cardExpMonth,
-      cardExpYear:     dto.cardExpYear,
-      cardCvv:         dto.cardCvv,
+      ...(vault
+        ? { customerId: vault.customerId, cardId: vault.cardId }
+        : {
+            cardNumber:     dto.cardNumber,
+            cardHolderName: dto.cardHolderName,
+            cardExpMonth:   dto.cardExpMonth,
+            cardExpYear:    dto.cardExpYear,
+            cardCvv:        dto.cardCvv,
+          }),
       arenaRecipientId,
       sellerRecipientId,
       commissionPct: 7,
@@ -247,7 +308,27 @@ export class PaymentsService {
     const chargeStatus = charge.status; // 'authorized', 'paid', 'refused', 'pending', etc.
     const isPaid = chargeStatus === 'authorized' || chargeStatus === 'paid';
 
-    const cardLast4 = dto.cardNumber.replace(/\D/g, '').slice(-4);
+    const cardLast4 = dto.useSavedCard
+      ? buyer.savedCard!.last4
+      : (dto.cardNumber ?? '').replace(/\D/g, '').slice(-4);
+
+    if (cardToSave && vault) {
+      if (isPaid) {
+        // One saved card per account: the new one replaces the old.
+        const previous = buyer.savedCard;
+        await this.db.update({
+          Key: { PK: buyerKey.PK, SK: buyerKey.SK },
+          UpdateExpression: 'SET savedCard = :sc, updatedAt = :now',
+          ExpressionAttributeValues: { ':sc': cardToSave, ':now': new Date().toISOString() },
+        });
+        if (previous && previous.cardId !== cardToSave.cardId) {
+          void this.pagarme.deleteCustomerCard(vault.customerId, previous.cardId).catch(() => undefined);
+        }
+      } else {
+        // A refused card is not worth keeping.
+        void this.pagarme.deleteCustomerCard(vault.customerId, cardToSave.cardId).catch(() => undefined);
+      }
+    }
     const now = new Date().toISOString();
 
     // Base update: store charge details and payment method regardless of status
@@ -284,7 +365,10 @@ export class PaymentsService {
 
     if (isPaid) {
       this.logger.log(`Order ${dto.orderId} paid via credit card (charge ${charge.id})`);
-      // Async: fiscal + shipping (same as PIX path)
+      // Async: notifications, fiscal + shipping (same as PIX path). The order is
+      // already PAID here, so the charge.paid webhook's markPaid will skip it —
+      // notifying must happen now or the seller and buyer never hear about it.
+      void this.notifyPaid(order);
       void this.fiscal.emitCommissionNfse(order);
       void this.fiscal.emitMpcNfe(order);
       if (order.deliveryMethod === 'CORREIOS' && order.buyerCep) {
@@ -307,6 +391,22 @@ export class PaymentsService {
       orderId:  dto.orderId,
       chargeId: charge.id,
     };
+  }
+
+  /** Forget the saved card: removed from Pagar.me's vault and from the account. */
+  async removeSavedCard(userId: string): Promise<void> {
+    const key  = Keys.user(userId);
+    const user = await this.db.get<UserRecord>(key.PK, key.SK);
+    if (!user?.savedCard) return;
+    if (user.pagarmeCustomerId) {
+      await this.pagarme.deleteCustomerCard(user.pagarmeCustomerId, user.savedCard.cardId)
+        .catch((err) => this.logger.warn(`Pagar.me card delete failed for ${userId}`, err));
+    }
+    await this.db.update({
+      Key: { PK: key.PK, SK: key.SK },
+      UpdateExpression: 'REMOVE savedCard SET updatedAt = :now',
+      ExpressionAttributeValues: { ':now': new Date().toISOString() },
+    });
   }
 
   // ── Poll payment status ───────────────────────────────────────────────────

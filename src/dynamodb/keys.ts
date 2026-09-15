@@ -58,6 +58,8 @@ export const Keys = {
 
   // ── Password reset token ──────────────────────────────────────────────────
   pwdReset: (code: string) => ({ PK: `PWDRESET#${code}`, SK: 'METADATA' as const }),
+  // At most one pending e-mail change per user; a new request replaces it.
+  emailChange: (userId: string) => ({ PK: `USER#${userId}`, SK: 'EMAIL_CHANGE' as const }),
 } as const;
 
 // ── GSI partition values ───────────────────────────────────────────────────

@@ -15,6 +15,7 @@ import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { TotpActivateDto } from './dto/totp-activate.dto';
 import { TotpAuthenticateDto } from './dto/totp-authenticate.dto';
+import { ConfirmEmailChangeDto, StartEmailChangeDto } from './dto/email-change.dto';
 import { TotpService } from './services/totp.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -108,6 +109,29 @@ export class AuthController {
     @Body() dto: TotpActivateDto,
   ): Promise<void> {
     await this.totp.disable(user.sub, dto.code);
+  }
+
+  @Post('email/change/start')
+  @HttpCode(200)
+  // Each call sends an e-mail and checks a password.
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @UseGuards(JwtAuthGuard)
+  startEmailChange(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: StartEmailChangeDto,
+  ): Promise<{ sentTo: string }> {
+    return this.auth.startEmailChange(user.sub, dto);
+  }
+
+  @Post('email/change/confirm')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @UseGuards(JwtAuthGuard)
+  confirmEmailChange(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: ConfirmEmailChangeDto,
+  ): Promise<AuthSession> {
+    return this.auth.confirmEmailChange(user.sub, dto.code);
   }
 
   @Post('phone/start')

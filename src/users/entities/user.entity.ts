@@ -83,6 +83,9 @@ export interface UserRecord {
   bankAccount?: string;       // account number without digit
   bankAccountDigit?: string;
   bankLockedAt?: string;      // ISO timestamp; set when user saves bank data
+  bankChangedAt?: string;     // ISO timestamp of the last bank account change; withdrawals wait 48h after it
+  pagarmeCustomerId?: string; // Pagar.me customer that owns the saved card
+  savedCard?: SavedCard;      // card kept in Pagar.me's vault — never the number or CVV
 
   status: UserStatus;
   createdAt: string;
@@ -113,6 +116,8 @@ export interface UserPublic {
   bankAccount?: string;
   bankAccountDigit?: string;
   bankLockedAt?: string;
+  bankChangedAt?: string;
+  savedCard?: Omit<SavedCard, 'cardId'>;
   ratingAvgAsSeller?: number;
   ratingCountAsSeller: number;
   ratingAvgAsBuyer?: number;
@@ -120,8 +125,18 @@ export interface UserPublic {
   listingsActiveCount: number;
   mpcPurchasesCount: number;
   totpEnabled: boolean;
+  // Lets the app ask for the password only where one exists (not Google/Apple accounts).
+  hasPassword: boolean;
   status: UserStatus;
   createdAt: string;
+}
+
+export interface SavedCard {
+  cardId:   string;
+  brand?:   string;
+  last4:    string;
+  expMonth: number;
+  expYear:  number;
 }
 
 export function toPublic(u: UserRecord): UserPublic {
@@ -149,6 +164,10 @@ export function toPublic(u: UserRecord): UserPublic {
     bankAccount:       u.bankAccount,
     bankAccountDigit:  u.bankAccountDigit,
     bankLockedAt:      u.bankLockedAt,
+    bankChangedAt:     u.bankChangedAt,
+    savedCard: u.savedCard
+      ? { brand: u.savedCard.brand, last4: u.savedCard.last4, expMonth: u.savedCard.expMonth, expYear: u.savedCard.expYear }
+      : undefined,
     ratingAvgAsSeller: u.ratingAvgAsSeller,
     ratingCountAsSeller: u.ratingCountAsSeller,
     ratingAvgAsBuyer: u.ratingAvgAsBuyer,
@@ -156,6 +175,7 @@ export function toPublic(u: UserRecord): UserPublic {
     listingsActiveCount: u.listingsActiveCount,
     mpcPurchasesCount: u.mpcPurchasesCount,
     totpEnabled: u.totpEnabled ?? false,
+    hasPassword: !!u.passwordHash,
     status: u.status,
     createdAt: u.createdAt,
   };

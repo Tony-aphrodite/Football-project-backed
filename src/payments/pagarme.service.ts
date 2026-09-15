@@ -26,6 +26,16 @@ export interface PagarmeOrder {
   charges: PagarmeCharge[];
 }
 
+/** A card kept in Pagar.me's vault. We only ever store its id and display data. */
+export interface PagarmeCard {
+  id: string;
+  brand?: string;
+  last_four_digits: string;
+  exp_month: number;
+  exp_year: number;
+  status?: string;
+}
+
 export interface CreatePixOrderParams {
   externalCode: string;
   amountCents: number;
@@ -50,11 +60,15 @@ export interface CreateCardOrderParams {
   customerEmail?:  string;
   itemDescription: string;
   installments:    number;        // 1-12
-  cardNumber:      string;        // raw digits
-  cardHolderName:  string;
-  cardExpMonth:    number;
-  cardExpYear:     number;        // 4-digit
-  cardCvv:         string;
+  // Either a card stored in Pagar.me's vault (customerId + cardId)…
+  customerId?:     string;
+  cardId?:         string;
+  // …or the card typed in for this purchase only.
+  cardNumber?:     string;        // raw digits
+  cardHolderName?: string;
+  cardExpMonth?:   number;
+  cardExpYear?:    number;        // 4-digit
+  cardCvv?:        string;
   // Split payment recipients
   arenaRecipientId?:  string;
   sellerRecipientId?: string;
@@ -92,7 +106,7 @@ export class PagarmeService {
     if (!res.ok) {
       const text = await res.text().catch(() => '');
       this.logger.error(`Pagar.me ${method} ${path} → ${res.status}: ${text}`);
-      throw new Error(`Pagar.me API error ${res.status}`);
+      throw Object.assign(new Error(`Pagar.me API error ${res.status}`), { status: res.status, body: text });
     }
 
     return res.json() as Promise<T>;
@@ -159,9 +173,13 @@ export class PagarmeService {
     const areaCode    = phoneDigits.slice(2, 4);
     const number      = phoneDigits.slice(4);
 
+    const useVault = !!(params.customerId && params.cardId);
+
     return this.request<PagarmeOrder>('POST', '/orders', {
       code: params.externalCode,
-      customer: {
+      // A vault card belongs to a customer, so the order must name that customer.
+      ...(useVault ? { customer_id: params.customerId } : {}),
+      customer: useVault ? undefined : {
         name:          params.customerName,
         type:          'individual',
         document:      cpfDigits,
@@ -190,13 +208,17 @@ export class PagarmeService {
           credit_card: {
             installments: params.installments,
             statement_descriptor: 'Arena dos Mantos',
-            card: {
-              number:      params.cardNumber.replace(/\D/g, ''),
-              holder_name: params.cardHolderName,
-              exp_month:   params.cardExpMonth,
-              exp_year:    params.cardExpYear,
-              cvv:         params.cardCvv,
-            },
+            ...(useVault
+              ? { card_id: params.cardId }
+              : {
+                  card: {
+                    number:      (params.cardNumber ?? '').replace(/\D/g, ''),
+                    holder_name: params.cardHolderName,
+                    exp_month:   params.cardExpMonth,
+                    exp_year:    params.cardExpYear,
+                    cvv:         params.cardCvv,
+                  },
+                }),
           },
           // Include split if both recipient IDs are available
           ...(params.arenaRecipientId && params.sellerRecipientId ? {
@@ -288,6 +310,86 @@ export class PagarmeService {
         delay: null,
       },
     });
+  }
+
+  /**
+   * Replaces the bank account of an existing recipient — no second recipient is
+   * created. Pagar.me requires holder_document to equal the recipient's
+   * document, so payouts can only ever go to an account in the seller's CPF.
+   * Needs the server IP on Pagar.me's allow list, otherwise it answers
+   * "Second authentication factor is necessary".
+   */
+  async updateRecipientBankAccount(recipientId: string, params: {
+    name: string;
+    cpf: string;
+    bankCode: string;
+    bankAgency: string;
+    bankAgencyDigit?: string;
+    bankAccount: string;
+    bankAccountDigit: string;
+  }): Promise<void> {
+    await this.request('PATCH', `/recipients/${recipientId}/default-bank-account`, {
+      bank_account: {
+        holder_name: params.name,
+        holder_type: 'individual',
+        holder_document: params.cpf.replace(/\D/g, ''),
+        bank: params.bankCode,
+        branch_number: params.bankAgency,
+        branch_check_digit: params.bankAgencyDigit || '0',
+        account_number: params.bankAccount,
+        account_check_digit: params.bankAccountDigit,
+        type: 'checking',
+      },
+    });
+  }
+
+  // ── Saved cards (Pagar.me vault) ─────────────────────────────────────────
+  // The card number and CVV stay with Pagar.me; we keep only the card id,
+  // brand, last 4 digits and expiry.
+
+  async createCustomer(params: { name: string; email: string; cpf: string; phoneE164?: string }): Promise<{ id: string }> {
+    const cpf   = params.cpf.replace(/\D/g, '');
+    const phone = (params.phoneE164 ?? '').replace(/\D/g, '');
+    return this.request('POST', '/customers', {
+      name:          params.name,
+      email:         params.email,
+      document:      cpf,
+      document_type: 'CPF',
+      type:          'individual',
+      ...(phone.length >= 12 ? {
+        phones: { mobile_phone: { country_code: '55', area_code: phone.slice(2, 4), number: phone.slice(4) } },
+      } : {}),
+    });
+  }
+
+  async createCustomerCard(customerId: string, card: {
+    number: string;
+    holderName: string;
+    expMonth: number;
+    expYear: number;
+    cvv: string;
+    billingAddress?: { line1: string; zipCode: string; city: string; state: string };
+  }): Promise<PagarmeCard> {
+    return this.request('POST', `/customers/${customerId}/cards`, {
+      number:      card.number.replace(/\D/g, ''),
+      holder_name: card.holderName,
+      exp_month:   card.expMonth,
+      exp_year:    card.expYear,
+      cvv:         card.cvv,
+      ...(card.billingAddress ? {
+        billing_address: {
+          line_1:   card.billingAddress.line1,
+          zip_code: card.billingAddress.zipCode,
+          city:     card.billingAddress.city,
+          state:    card.billingAddress.state,
+          country:  'BR',
+        },
+      } : {}),
+    });
+  }
+
+  async deleteCustomerCard(customerId: string, cardId: string): Promise<void> {
+    await this.request('DELETE', `/customers/${customerId}/cards/${cardId}`);
   }
 
   /** Fetches available balance for a recipient. Returns amount in cents. */

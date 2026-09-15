@@ -1,8 +1,9 @@
 import { BadRequestException, Body, Controller, Get, Param, Patch, Post, Request, UseGuards } from '@nestjs/common';
-import { IsInt, IsOptional, IsString, Length, Min } from 'class-validator';
+import { IsInt, IsOptional, IsString, Length, Matches, MaxLength, Min } from 'class-validator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { AdminGuard } from '../common/guards/admin.guard';
 import { UsersService } from './users.service';
+import { Throttle } from '@nestjs/throttler';
 import { PagarmeService } from '../payments/pagarme.service';
 import { SurveyDto } from './dto/survey.dto';
 import type { JwtPayload } from '../auth/types/jwt-payload.type';
@@ -27,7 +28,9 @@ class SetRecipientDto {
 
 class UpdateDadosPessoaisDto {
   @IsString() @Length(2, 120) nomeCompleto!: string;
-  @IsString() @Length(5, 120) email!: string;
+  // Ignored: sent by app versions before 1.0.18. The e-mail only changes through
+  // the verified flow in /auth/email/change.
+  @IsOptional() @IsString() @Length(0, 120) email?: string;
 }
 
 class UpdateBankDto {
@@ -36,6 +39,11 @@ class UpdateBankDto {
   @IsOptional() @IsString()   bankAgencyDigit?: string;
   @IsString() @Length(1, 15)  bankAccount!: string;
   @IsString() @Length(1, 2)   bankAccountDigit!: string;
+}
+
+class ChangeBankDto extends UpdateBankDto {
+  @IsOptional() @IsString() @MaxLength(100) password?: string;
+  @IsOptional() @IsString() @Matches(/^\d{6}$/) totpCode?: string;
 }
 
 class SacarDto {
@@ -86,7 +94,7 @@ export class UsersController {
   @Post('me/dados-pessoais')
   async updateDadosPessoais(@Body() dto: UpdateDadosPessoaisDto, @Request() req: { user: JwtPayload }) {
     try {
-      return await this.users.updateDadosPessoais(req.user.sub, { nomeCompleto: dto.nomeCompleto, email: dto.email });
+      return await this.users.updateDadosPessoais(req.user.sub, { nomeCompleto: dto.nomeCompleto });
     } catch (e) {
       if ((e as Error).message === 'LOCKED') throw new BadRequestException('Dados pessoais já registrados. Entre em contato via contato@arenadosmantos.app.br');
       throw e;
@@ -104,6 +112,13 @@ export class UsersController {
       if (msg === 'Complete Dados Pessoais first') throw new BadRequestException('Preencha os Dados Pessoais primeiro');
       throw e;
     }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @Post('me/financeiro/bank/change')
+  changeBankData(@Body() dto: ChangeBankDto, @Request() req: { user: JwtPayload }) {
+    return this.users.changeBankData(req.user.sub, dto, this.pagarme);
   }
 
   @UseGuards(JwtAuthGuard)

@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Headers,
   HttpCode,
@@ -40,6 +41,14 @@ export class PaymentsController {
     @Body() dto: InitiateCardPaymentDto,
   ): Promise<CardPaymentResult> {
     return this.payments.initiateCardPayment(user.sub, dto);
+  }
+
+  /** Remove the card saved for one-tap purchases. */
+  @Delete('card/saved')
+  @HttpCode(204)
+  @UseGuards(JwtAuthGuard)
+  async removeSavedCard(@CurrentUser() user: JwtPayload): Promise<void> {
+    await this.payments.removeSavedCard(user.sub);
   }
 
   /** Poll payment status (buyer/seller). Syncs with Pagar.me if PENDING. */

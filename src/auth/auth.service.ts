@@ -7,7 +7,9 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
+import { createHash, randomInt, timingSafeEqual } from 'node:crypto';
 import { TotpService } from './services/totp.service';
+import { assertReauthenticated } from './reauth';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { ulid } from 'ulid';
@@ -17,7 +19,11 @@ import { DynamoDbService } from '../dynamodb/dynamodb.service';
 import { Keys } from '../dynamodb/keys';
 import { UsersService } from '../users/users.service';
 import { EmailService } from '../email/email.service';
-import { passwordResetEmail } from '../email/email.templates';
+import {
+  emailChangeCodeEmail,
+  emailChangedNoticeEmail,
+  passwordResetEmail,
+} from '../email/email.templates';
 import type { UserRecord } from '../users/entities/user.entity';
 import { toPublic } from '../users/entities/user.entity';
 
@@ -233,6 +239,153 @@ export class AuthService {
     }
 
     return this.issueSession(user);
+  }
+
+  // ── E-mail change ───────────────────────────────────────────────────────────
+  //
+  // 1. start: re-authenticate (password and/or 2FA), check the new address is
+  //    free, e-mail a 6-digit code to the NEW address.
+  // 2. confirm: the code proves ownership; the profile and the login lookup
+  //    switch in one transaction, and the OLD address is told about it.
+  //
+  // Only a hash of the code is stored, it expires in 15 minutes and allows 5
+  // attempts, so it cannot be brute-forced.
+
+  async startEmailChange(
+    userId: string,
+    input: { newEmail: string; password?: string; totpCode?: string },
+  ): Promise<{ sentTo: string }> {
+    const user     = await this.users.getById(userId);
+    const newEmail = input.newEmail.trim().toLowerCase();
+
+    if (newEmail === user.email?.toLowerCase()) {
+      throw new BadRequestException('Este já é o e-mail da sua conta.');
+    }
+
+    await assertReauthenticated(user, input);
+
+    const owner = await this.users.findByEmail(newEmail);
+    if (owner && owner.userId !== userId) {
+      throw new ConflictException('Este e-mail já está cadastrado em outra conta.');
+    }
+
+    const k       = Keys.emailChange(userId);
+    const pending = await this.db.get<{ sentAt: string }>(k.PK, k.SK);
+    if (pending && Date.now() - new Date(pending.sentAt).getTime() < 60_000) {
+      throw new BadRequestException('Aguarde 1 minuto para pedir um novo código.');
+    }
+
+    const code = String(randomInt(100000, 1000000));
+    const now  = new Date();
+    await this.db.put({
+      ...k,
+      entityType: 'EmailChange',
+      userId,
+      newEmail,
+      codeHash:  this.hashCode(userId, code),
+      attempts:  0,
+      sentAt:    now.toISOString(),
+      expiresAt: new Date(now.getTime() + 15 * 60_000).toISOString(),
+    });
+
+    const mail = emailChangeCodeEmail(code);
+    const sent = await this.email.send(newEmail, mail.subject, mail.html);
+    if (!sent.ok) {
+      throw new BadRequestException('Não foi possível enviar o código para este e-mail. Verifique o endereço.');
+    }
+    return { sentTo: newEmail };
+  }
+
+  async confirmEmailChange(userId: string, code: string): Promise<AuthSession> {
+    const k       = Keys.emailChange(userId);
+    const pending = await this.db.get<{
+      newEmail: string; codeHash: string; attempts: number; expiresAt: string;
+    }>(k.PK, k.SK);
+
+    if (!pending) throw new BadRequestException('Nenhuma troca de e-mail pendente. Peça um novo código.');
+    if (new Date(pending.expiresAt) < new Date()) {
+      throw new BadRequestException('Código expirado. Peça um novo código.');
+    }
+    if (pending.attempts >= 5) {
+      throw new BadRequestException('Muitas tentativas. Peça um novo código.');
+    }
+
+    const expected = Buffer.from(pending.codeHash, 'hex');
+    const given    = Buffer.from(this.hashCode(userId, code), 'hex');
+    if (!timingSafeEqual(expected, given)) {
+      await this.db.update({
+        Key: { PK: k.PK, SK: k.SK },
+        UpdateExpression: 'SET attempts = attempts + :one',
+        ExpressionAttributeValues: { ':one': 1 },
+      });
+      throw new BadRequestException('Código incorreto.');
+    }
+
+    const user     = await this.users.getById(userId);
+    const oldEmail = user.email;
+    const newEmail = pending.newEmail;
+    const now      = new Date().toISOString();
+    const newLookup = Keys.lookupEmail(newEmail);
+
+    const items: Parameters<typeof this.db.transactWrite>[0] = [
+      {
+        Update: {
+          TableName: this.db.tableName,
+          Key: { PK: user.PK, SK: user.SK },
+          UpdateExpression: 'SET email = :e, updatedAt = :now',
+          ExpressionAttributeValues: { ':e': newEmail, ':now': now },
+        },
+      },
+      {
+        // Fails if another account took the address since the code was sent.
+        Put: {
+          TableName: this.db.tableName,
+          Item: { ...newLookup, entityType: 'UserLookup', userId },
+          ConditionExpression: 'attribute_not_exists(PK)',
+        },
+      },
+      { Delete: { TableName: this.db.tableName, Key: { PK: k.PK, SK: k.SK } } },
+    ];
+    if (oldEmail && oldEmail.toLowerCase() !== newEmail) {
+      const oldLookup = Keys.lookupEmail(oldEmail);
+      items.push({
+        // Only ever remove our own lookup row.
+        Delete: {
+          TableName: this.db.tableName,
+          Key: { PK: oldLookup.PK, SK: oldLookup.SK },
+          ConditionExpression: 'attribute_not_exists(PK) OR userId = :uid',
+          ExpressionAttributeValues: { ':uid': userId },
+        },
+      });
+    }
+
+    try {
+      await this.db.transactWrite(items);
+    } catch (err: unknown) {
+      const name = (err as { name?: string }).name;
+      if (name === 'TransactionCanceledException' || name === 'ConditionalCheckFailedException') {
+        throw new ConflictException('Este e-mail já está cadastrado em outra conta.');
+      }
+      throw err;
+    }
+
+    if (oldEmail) {
+      const notice = emailChangedNoticeEmail(this.maskEmail(newEmail));
+      void this.email.send(oldEmail, notice.subject, notice.html);
+    }
+    this.logger.log(`E-mail changed for user ${userId}`);
+
+    return this.issueSession(await this.users.getById(userId));
+  }
+
+  private hashCode(userId: string, code: string): string {
+    return createHash('sha256').update(`${userId}:${code}`).digest('hex');
+  }
+
+  /** "eduardo.cruz@gmail.com" → "ed*********@gmail.com" */
+  private maskEmail(email: string): string {
+    const [local, domain] = email.split('@');
+    return `${local.slice(0, 2)}${'*'.repeat(Math.max(local.length - 2, 1))}@${domain}`;
   }
 
   async startPhoneVerification(userId: string, phoneE164: string): Promise<void> {
