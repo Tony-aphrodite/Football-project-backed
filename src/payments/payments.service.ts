@@ -4,6 +4,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 
 import { ConfigService } from '@nestjs/config';
@@ -152,8 +153,12 @@ export class PaymentsService {
     const tx     = charge?.last_transaction;
 
     if (!charge || !tx?.qr_code) {
-      this.logger.error('Pagar.me response missing charge/qr_code', pagarmeOrder);
-      throw new Error('Pagar.me returned an unexpected response');
+      this.logger.error(
+        `Pagar.me gave no PIX QR code for order ${orderId}: ${charge ? describeDecline(charge) ?? charge.status : 'no charge'}`,
+      );
+      // Same as a refused card: the jersey goes back on sale.
+      await this.cancelUnpaidOrder(orderId, `pix ${charge?.status ?? 'no charge'}: ${charge ? describeDecline(charge) ?? '' : ''}`);
+      throw new ServiceUnavailableException('Não foi possível gerar o PIX agora. Tente novamente mais tarde.');
     }
 
     const pixExpiresAt = tx.expires_at ?? new Date(Date.now() + 86_400_000).toISOString();
@@ -427,6 +432,13 @@ export class PaymentsService {
       // The order took the jersey off sale; a refused card must give it back,
       // or the listing stays SOLD with nobody paying for it.
       await this.cancelUnpaidOrder(dto.orderId, `card ${chargeStatus}: ${declineReason ?? 'no reason given'}`);
+      // A setup problem on our side is not the buyer's card: say so honestly.
+      if (declineReason?.includes('gateway:')) {
+        this.logger.error(`Pagar.me rejected the charge request itself (not the card): ${declineReason}`);
+        throw new ServiceUnavailableException(
+          'Não foi possível processar o pagamento agora — o problema não é o seu cartão. Tente novamente mais tarde.',
+        );
+      }
     } else {
       resultStatus = 'pending';
     }
