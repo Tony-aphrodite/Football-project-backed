@@ -123,7 +123,9 @@ export class NotificationsService {
               data: stringData,
               android: {
                 priority: 'HIGH',
-                notification: { sound: 'default', channelId: 'default' },
+                // Brand icon + colour. Installs from before the icon existed fall
+                // back to the default icon — Android ignores an unknown resource.
+                notification: { sound: 'default', channelId: 'default', icon: 'notification_icon', color: '#335336' },
               },
             },
           }),

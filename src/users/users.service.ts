@@ -180,6 +180,13 @@ export class UsersService {
   async attachCpf(userId: string, cpf: string): Promise<void> {
     const u = await this.getById(userId);
     if (u.cpf === cpf) return;
+    // A CPF is permanent once registered: bans are enforced on it, so letting
+    // an account swap it would let a banned user simply come back.
+    if (u.cpf) {
+      throw new ConflictException(
+        'Esta conta já tem um CPF registrado, que não pode ser alterado. Fale com contato@arenadosmantos.app.br.',
+      );
+    }
 
     const lookup = Keys.lookupCpf(cpf);
     await this.db.transactWrite([

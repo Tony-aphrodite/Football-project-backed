@@ -18,6 +18,7 @@ import { FiscalService } from '../fiscal/fiscal.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { EmailService } from '../email/email.service';
 import {
+  orderPaidBuyerEmail,
   orderPaidSellerEmail,
   orderShippedBuyerEmail,
   shippingLabelEmail,
@@ -70,6 +71,7 @@ export class PaymentsService {
       teamName:   order.teamName,
       season:     order.season,
       priceCents: order.priceCents,
+      totalCents: order.totalCents,
       buyerName:  order.buyerName,
       sellerName: order.sellerName,
       tracking:   order.correiosTracking,
@@ -418,6 +420,12 @@ export class PaymentsService {
     );
     const paidMail = orderPaidSellerEmail(this.emailData(order));
     void this.email.send(seller?.email, paidMail.subject, paidMail.html);
+
+    // Buyer confirmation: a receipt, and the fastest way for an account owner
+    // to spot a purchase they did not make.
+    const buyer = await this.users.findById(order.buyerId).catch(() => null);
+    const buyerMail = orderPaidBuyerEmail(this.emailData(order));
+    void this.email.send(buyer?.email, buyerMail.subject, buyerMail.html);
   }
 
   private async purchaseLabelAsync(order: OrderRecord): Promise<void> {

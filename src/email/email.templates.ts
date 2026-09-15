@@ -109,6 +109,7 @@ export interface OrderEmailData {
   teamName:   string;
   season?:    string;
   priceCents: number;
+  totalCents?: number;   // what the buyer actually paid, shipping and discount included
   buyerName:  string;
   sellerName: string;
   tracking?:  string;
@@ -282,6 +283,34 @@ export function disputeOpenedSellerEmail(d: OrderEmailData, reason: string): Ema
         </td></tr>
       </table>
       ${p('Responda este e-mail com qualquer informação que ajude a resolver — comprovante de postagem, fotos do envio, conversas com o comprador.')}
+    `),
+  };
+}
+
+/**
+ * Buyer: payment confirmed. A receipt, and also the fastest way for an account
+ * owner to notice a purchase they did not make — no cards are stored, but an
+ * account can still be misused with a stolen card.
+ */
+export function orderPaidBuyerEmail(d: OrderEmailData): EmailContent {
+  return {
+    subject: `✅ Compra confirmada — ${d.teamName}`,
+    html: layout('Sua compra foi confirmada!', `
+      ${p(`O pagamento do pedido <strong>#${esc(shortId(d.orderId))}</strong> foi aprovado.`)}
+      ${details([
+        ['Camisa',   `${d.teamName}${d.season ? ` · ${d.season}` : ''}`],
+        ['Vendedor', d.sellerName],
+        ['Total',    brl(d.totalCents ?? d.priceCents)],
+        ['Pedido',   `#${shortId(d.orderId)}`],
+      ])}
+      ${p('O vendedor já foi avisado e vai preparar o envio. Você recebe o código de rastreio por e-mail assim que a camisa for postada.')}
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+             style="background:#FEF3C7;border:1px solid #FDE68A;border-radius:12px;padding:14px 16px;margin:16px 0">
+        <tr><td style="color:#92400E;font-size:14px;line-height:21px">
+          <strong>Não reconhece esta compra?</strong> Responda este e-mail agora ou escreva para
+          contato@arenadosmantos.app.br. O valor fica retido e ainda não foi repassado ao vendedor.
+        </td></tr>
+      </table>
     `),
   };
 }
