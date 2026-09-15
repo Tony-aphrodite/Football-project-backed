@@ -15,6 +15,7 @@ import type { Request } from 'express';
 
 import { PaymentsService, type PixPaymentResult, type PaymentStatusResult, type CardPaymentResult, type PaymentConfig } from './payments.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { AdminGuard } from '../common/guards/admin.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { JwtPayload } from '../auth/types/jwt-payload.type';
 import { InitiateCardPaymentDto } from './dto/initiate-payment.dto';
@@ -41,6 +42,13 @@ export class PaymentsController {
     @Body() dto: InitiateCardPaymentDto,
   ): Promise<CardPaymentResult> {
     return this.payments.initiateCardPayment(user.sub, dto);
+  }
+
+  /** Admin: ask Pagar.me why an order's card charge failed (no card data returned). */
+  @Get('admin/diagnose/:orderId')
+  @UseGuards(AdminGuard)
+  diagnose(@Param('orderId') orderId: string): Promise<unknown> {
+    return this.payments.diagnosePagarmeOrder(orderId);
   }
 
   /** Public payment settings for the app (the Pagar.me public key is meant to be public). */

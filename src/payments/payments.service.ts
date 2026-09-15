@@ -8,10 +8,10 @@ import {
 
 import { ConfigService } from '@nestjs/config';
 import { DynamoDbService } from '../dynamodb/dynamodb.service';
-import { Keys } from '../dynamodb/keys';
+import { Gsi, Keys } from '../dynamodb/keys';
 import { OrderRecord } from '../orders/entities/order.entity';
 import type { SavedCard, UserRecord } from '../users/entities/user.entity';
-import { PagarmeService } from './pagarme.service';
+import { PagarmeService, type PagarmeCharge } from './pagarme.service';
 import { ShippingService } from '../shipping/shipping.service';
 import { UsersService } from '../users/users.service';
 import { DeveloperEarningsService } from '../developer-earnings/developer-earnings.service';
@@ -41,6 +41,18 @@ export interface PaymentStatusResult {
   orderId: string;
   status: string;
   pagarmeStatus: string | null;
+}
+
+/** Human-readable decline reason from a charge, or null when there is none. */
+function describeDecline(charge: PagarmeCharge): string | null {
+  const t = charge.last_transaction;
+  if (!t) return null;
+  const parts = [
+    t.acquirer_message && `acquirer: ${t.acquirer_message}${t.acquirer_return_code ? ` (${t.acquirer_return_code})` : ''}`,
+    t.gateway_response?.errors?.length && `gateway: ${t.gateway_response.errors.map((e) => e.message).join('; ')}`,
+    t.antifraud_response?.status && `antifraud: ${t.antifraud_response.status}${t.antifraud_response.reason ? ` (${t.antifraud_response.reason})` : ''}`,
+  ].filter(Boolean);
+  return parts.length ? parts.join(' | ') : null;
 }
 
 export interface PaymentConfig {
@@ -332,6 +344,10 @@ export class PaymentsService {
     }
 
     const chargeStatus = charge.status; // 'authorized', 'paid', 'refused', 'pending', etc.
+    const declineReason = describeDecline(charge);
+    if (declineReason) {
+      this.logger.warn(`Card charge ${charge.id} for order ${dto.orderId} is ${chargeStatus}: ${declineReason}`);
+    }
     const isPaid = chargeStatus === 'authorized' || chargeStatus === 'paid';
 
     const cardLast4 = dto.useSavedCard
@@ -408,6 +424,9 @@ export class PaymentsService {
       resultStatus = 'authorized';
     } else if (chargeStatus === 'refused' || chargeStatus === 'failed' || chargeStatus === 'with_error') {
       resultStatus = 'refused';
+      // The order took the jersey off sale; a refused card must give it back,
+      // or the listing stays SOLD with nobody paying for it.
+      await this.cancelUnpaidOrder(dto.orderId, `card ${chargeStatus}: ${declineReason ?? 'no reason given'}`);
     } else {
       resultStatus = 'pending';
     }
@@ -416,6 +435,133 @@ export class PaymentsService {
       status:   resultStatus,
       orderId:  dto.orderId,
       chargeId: charge.id,
+    };
+  }
+
+  /**
+   * Cancel an order that was never paid and put the jersey back on sale:
+   * order → CANCELLED, listing SOLD → ACTIVE, seller's active count +1, and
+   * the coupon use (if any) returned. Conditional, so it never touches an
+   * order that got paid in the meantime.
+   */
+  async cancelUnpaidOrder(orderId: string, reason: string): Promise<boolean> {
+    const orderKey = Keys.order(orderId);
+    const order = await this.db.get<OrderRecord>(orderKey.PK, orderKey.SK);
+    if (!order || order.status !== 'PENDING_PAYMENT') return false;
+
+    const now        = new Date().toISOString();
+    const listingKey = Keys.listing(order.listingId);
+    const sellerKey  = Keys.user(order.sellerId);
+
+    try {
+      await this.db.transactWrite([
+        {
+          Update: {
+            TableName: this.db.tableName,
+            Key: { PK: orderKey.PK, SK: orderKey.SK },
+            UpdateExpression: 'SET #s = :cancelled, cancelReason = :r, cancelledAt = :now, updatedAt = :now',
+            ConditionExpression: '#s = :pending',
+            ExpressionAttributeNames: { '#s': 'status' },
+            ExpressionAttributeValues: { ':cancelled': 'CANCELLED', ':pending': 'PENDING_PAYMENT', ':r': reason.slice(0, 300), ':now': now },
+          },
+        },
+        {
+          Update: {
+            TableName: this.db.tableName,
+            Key: { PK: listingKey.PK, SK: listingKey.SK },
+            UpdateExpression: 'SET #s = :active, GSI1PK = :gsi1pk, updatedAt = :now',
+            ConditionExpression: '#s = :sold',
+            ExpressionAttributeNames: { '#s': 'status' },
+            ExpressionAttributeValues: { ':active': 'ACTIVE', ':sold': 'SOLD', ':gsi1pk': Gsi.listingFeed('ACTIVE').GSI1PK, ':now': now },
+          },
+        },
+        {
+          Update: {
+            TableName: this.db.tableName,
+            Key: { PK: sellerKey.PK, SK: sellerKey.SK },
+            UpdateExpression: 'SET listingsActiveCount = if_not_exists(listingsActiveCount, :zero) + :one, updatedAt = :now',
+            ExpressionAttributeValues: { ':one': 1, ':zero': 0, ':now': now },
+          },
+        },
+        ...(order.couponCode ? [
+          {
+            Delete: {
+              TableName: this.db.tableName,
+              Key: Keys.couponRedemption(order.couponCode, order.buyerId),
+            },
+          },
+          {
+            Update: {
+              TableName: this.db.tableName,
+              Key: Keys.coupon(order.couponCode),
+              UpdateExpression: 'SET redemptionCount = redemptionCount - :one',
+              ConditionExpression: 'redemptionCount > :zero',
+              ExpressionAttributeValues: { ':one': 1, ':zero': 0 },
+            },
+          },
+        ] : []),
+      ]);
+    } catch (err) {
+      this.logger.error(`Could not cancel unpaid order ${orderId} (${reason})`, err);
+      return false;
+    }
+    this.logger.log(`Order ${orderId} cancelled, listing ${order.listingId} back on sale — ${reason}`);
+    return true;
+  }
+
+  /**
+   * Hourly sweep of orders nobody paid: card orders after 30 minutes, PIX
+   * orders once the 24h QR code has expired. Pagar.me is asked first, so a
+   * payment whose webhook got lost is marked PAID instead of cancelled.
+   */
+  async expireUnpaidOrders(): Promise<void> {
+    const pending = await this.db.scanAll<OrderRecord & { pagarmeOrderId?: string; paymentMethod?: string }>({
+      FilterExpression: 'entityType = :o AND #s = :pending',
+      ExpressionAttributeNames: { '#s': 'status' },
+      ExpressionAttributeValues: { ':o': 'Order', ':pending': 'PENDING_PAYMENT' },
+    });
+    const nowMs = Date.now();
+    let cancelled = 0;
+
+    for (const order of pending) {
+      const ageMin = (nowMs - new Date(order.createdAt).getTime()) / 60_000;
+      const limitMin = order.paymentMethod === 'CREDIT_CARD' ? 30 : 26 * 60;
+      if (ageMin < limitMin) continue;
+
+      if (order.pagarmeOrderId) {
+        try {
+          const remote = await this.pagarme.getOrder(order.pagarmeOrderId);
+          if (remote.status === 'paid') {
+            await this.markPaid(order.orderId);
+            continue;
+          }
+        } catch (err) {
+          // Unknown remote state: never cancel something that might be paid.
+          this.logger.warn(`Skipping expiry of ${order.orderId}: Pagar.me lookup failed`, err);
+          continue;
+        }
+      }
+      if (await this.cancelUnpaidOrder(order.orderId, `unpaid after ${Math.round(ageMin)} min`)) cancelled++;
+    }
+    if (cancelled > 0) this.logger.log(`Expired ${cancelled} unpaid order(s)`);
+  }
+
+  /** Admin diagnostics: Pagar.me's view of an order's charges, decline reasons only. */
+  async diagnosePagarmeOrder(orderId: string): Promise<unknown> {
+    const orderKey = Keys.order(orderId);
+    const order = await this.db.get<OrderRecord & { pagarmeOrderId?: string }>(orderKey.PK, orderKey.SK);
+    if (!order?.pagarmeOrderId) throw new NotFoundException('Order has no Pagar.me order');
+    const remote = await this.pagarme.getOrder(order.pagarmeOrderId);
+    return {
+      orderId,
+      localStatus: order.status,
+      pagarmeStatus: remote.status,
+      charges: (remote.charges ?? []).map((c) => ({
+        id: c.id,
+        status: c.status,
+        transactionStatus: c.last_transaction?.status,
+        reason: describeDecline(c),
+      })),
     };
   }
 

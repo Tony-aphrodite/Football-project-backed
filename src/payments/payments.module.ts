@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { PaymentsController } from './payments.controller';
 import { PaymentsService } from './payments.service';
+import { PaymentsScheduler } from './payments.scheduler';
 import { PagarmeService } from './pagarme.service';
 import { DynamoDbModule } from '../dynamodb/dynamodb.module';
 import { ShippingModule } from '../shipping/shipping.module';
@@ -12,7 +13,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
 @Module({
   imports:     [DynamoDbModule, ShippingModule, UsersModule, DeveloperEarningsModule, FiscalModule, NotificationsModule],
   controllers: [PaymentsController],
-  providers:   [PaymentsService, PagarmeService],
+  providers:   [PaymentsService, PagarmeService, PaymentsScheduler],
   exports:     [PaymentsService],
 })
 export class PaymentsModule {}

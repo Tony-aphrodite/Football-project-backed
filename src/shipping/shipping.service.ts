@@ -67,8 +67,9 @@ export interface MelhorEnvioWebhookPayload {
   tracking:        TrackingEvent[];
 }
 
-// Markup on top of carrier price (40%)
-const SHIPPING_MARKUP = 1.4;
+// Markup on top of the carrier price (30%). Lowered from 40%: shipping felt
+// expensive enough to push buyers away from checking out in the app.
+const SHIPPING_MARKUP = 1.3;
 
 function fallback(toCep: string): ShippingOption[] {
   const region = parseInt(toCep.replace(/\D/g, '').slice(0, 2), 10);

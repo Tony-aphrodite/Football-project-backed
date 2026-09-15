@@ -7,6 +7,11 @@ import type { AppConfig } from '../config/configuration';
 export interface PagarmeTransaction {
   id: string;
   status: string;
+  // Why a card was declined — no card data, safe to log.
+  acquirer_message?: string;
+  acquirer_return_code?: string;
+  gateway_response?: { code?: string; errors?: { message?: string }[] };
+  antifraud_response?: { status?: string; reason?: string };
   qr_code?: string;
   qr_code_url?: string;
   expires_at?: string;
