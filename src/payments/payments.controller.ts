@@ -13,7 +13,7 @@ import {
 } from '@nestjs/common';
 import type { Request } from 'express';
 
-import { PaymentsService, type PixPaymentResult, type PaymentStatusResult, type CardPaymentResult } from './payments.service';
+import { PaymentsService, type PixPaymentResult, type PaymentStatusResult, type CardPaymentResult, type PaymentConfig } from './payments.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { JwtPayload } from '../auth/types/jwt-payload.type';
@@ -45,7 +45,7 @@ export class PaymentsController {
 
   /** Public payment settings for the app (the Pagar.me public key is meant to be public). */
   @Get('config')
-  getPaymentConfig(): { cardTokenizationKey: string | null } {
+  getPaymentConfig(): PaymentConfig {
     return this.payments.getPaymentConfig();
   }
 

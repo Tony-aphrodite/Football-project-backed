@@ -43,6 +43,14 @@ export interface PaymentStatusResult {
   pagarmeStatus: string | null;
 }
 
+export interface PaymentConfig {
+  cardTokenizationKey: string | null;
+  /** Why tokenization is on or off, for diagnosing the Railway setup. */
+  status: 'ok' | 'missing_public_key' | 'missing_secret_key' | 'mode_mismatch';
+  publicKeyMode?: 'test' | 'live';
+  secretKeyMode?: 'test' | 'live';
+}
+
 export interface CardPaymentResult {
   status:  'authorized' | 'refused' | 'pending';
   orderId: string;
@@ -417,19 +425,24 @@ export class PaymentsService {
    * with a test secret key (or vice versa), and the app then falls back to
    * sending the card to this server as before.
    */
-  getPaymentConfig(): { cardTokenizationKey: string | null } {
-    const publicKey = this.config.get('pagarme.publicKey', { infer: true });
-    const secretKey = this.config.get('pagarme.apiKey', { infer: true });
-    if (!publicKey || !secretKey) return { cardTokenizationKey: null };
-    const publicTest = publicKey.startsWith('pk_test_');
-    const secretTest = secretKey.startsWith('sk_test_');
-    if (publicTest !== secretTest) {
+  getPaymentConfig(): PaymentConfig {
+    // Trimmed: a stray space or newline pasted into the dashboard must not
+    // silently break the mode check.
+    const publicKey = this.config.get('pagarme.publicKey', { infer: true })?.trim();
+    const secretKey = this.config.get('pagarme.apiKey', { infer: true })?.trim();
+    if (!publicKey) return { cardTokenizationKey: null, status: 'missing_public_key' };
+    if (!secretKey) return { cardTokenizationKey: null, status: 'missing_secret_key' };
+
+    // Only the modes are reported — never any part of either key.
+    const publicMode = publicKey.startsWith('pk_test_') ? 'test' : 'live';
+    const secretMode = secretKey.startsWith('sk_test_') ? 'test' : 'live';
+    if (publicMode !== secretMode) {
       this.logger.error(
-        `PAGARME_PUBLIC_KEY is a ${publicTest ? 'test' : 'live'} key but PAGARME_API_KEY is ${secretTest ? 'test' : 'live'} — card tokenization disabled`,
+        `PAGARME_PUBLIC_KEY is a ${publicMode} key but PAGARME_API_KEY is ${secretMode} — card tokenization disabled`,
       );
-      return { cardTokenizationKey: null };
+      return { cardTokenizationKey: null, status: 'mode_mismatch', publicKeyMode: publicMode, secretKeyMode: secretMode };
     }
-    return { cardTokenizationKey: publicKey };
+    return { cardTokenizationKey: publicKey, status: 'ok', publicKeyMode: publicMode, secretKeyMode: secretMode };
   }
 
   /** Forget the saved card: removed from Pagar.me's vault and from the account. */
