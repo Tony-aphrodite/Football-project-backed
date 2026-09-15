@@ -181,6 +181,8 @@ export class PaymentsService {
       installments:  number;
       useSavedCard?: boolean;
       saveCard?:     boolean;
+      cardToken?:    string;
+      cardLast4?:    string;
       cardNumber?:   string;
       cardHolderName?: string;
       cardExpMonth?: number;
@@ -219,6 +221,15 @@ export class PaymentsService {
     const arenaRecipientId  = this.config.get('pagarme.arenaRecipientId', { infer: true });
     const sellerRecipientId = seller?.pagarmeRecipientId;
 
+    const billingAddress = buyer.sellerCep && buyer.sellerRua && buyer.sellerCidade && buyer.sellerEstado
+      ? {
+          line1:   `${buyer.sellerNumero ?? 'S/N'}, ${buyer.sellerRua}, ${buyer.sellerBairro ?? ''}`,
+          zipCode: buyer.sellerCep,
+          city:    buyer.sellerCidade,
+          state:   buyer.sellerEstado,
+        }
+      : undefined;
+
     // Which card: the saved one, a typed one kept in the vault, or a typed one
     // used only for this purchase.
     let vault: { customerId: string; cardId: string } | undefined;
@@ -230,7 +241,7 @@ export class PaymentsService {
       }
       vault = { customerId: buyer.pagarmeCustomerId, cardId: buyer.savedCard.cardId };
     } else {
-      if (!dto.cardNumber || !dto.cardHolderName || !dto.cardExpMonth || !dto.cardExpYear || !dto.cardCvv) {
+      if (!dto.cardToken && (!dto.cardNumber || !dto.cardHolderName || !dto.cardExpMonth || !dto.cardExpYear || !dto.cardCvv)) {
         throw new BadRequestException('Preencha os dados do cartão.');
       }
       if (dto.saveCard) {
@@ -250,17 +261,16 @@ export class PaymentsService {
             });
           }
           const card = await this.pagarme.createCustomerCard(customerId, {
-            number:     dto.cardNumber,
-            holderName: dto.cardHolderName,
-            expMonth:   dto.cardExpMonth,
-            expYear:    dto.cardExpYear,
-            cvv:        dto.cardCvv,
-            billingAddress: buyer.sellerCep && buyer.sellerRua && buyer.sellerCidade && buyer.sellerEstado ? {
-              line1:   `${buyer.sellerNumero ?? 'S/N'}, ${buyer.sellerRua}, ${buyer.sellerBairro ?? ''}`,
-              zipCode: buyer.sellerCep,
-              city:    buyer.sellerCidade,
-              state:   buyer.sellerEstado,
-            } : undefined,
+            ...(dto.cardToken
+              ? { token: dto.cardToken }
+              : {
+                  number:     dto.cardNumber!,
+                  holderName: dto.cardHolderName!,
+                  expMonth:   dto.cardExpMonth!,
+                  expYear:    dto.cardExpYear!,
+                  cvv:        dto.cardCvv!,
+                }),
+            billingAddress,
           });
           vault = { customerId, cardId: card.id };
           cardToSave = {
@@ -271,6 +281,12 @@ export class PaymentsService {
             expYear:  card.exp_year,
           };
         } catch (err) {
+          // A token is single-use: if the vault call consumed it, charging it
+          // again fails too — so say so instead of pretending it was typed.
+          if (dto.cardToken) {
+            this.logger.warn(`Could not save tokenized card for ${buyerId}`, err);
+            throw new BadRequestException('Não foi possível validar o cartão. Confira os dados e tente novamente.');
+          }
           this.logger.warn(`Could not save card for ${buyerId}, charging it directly`, err);
         }
       }
@@ -287,6 +303,8 @@ export class PaymentsService {
       installments:    dto.installments,
       ...(vault
         ? { customerId: vault.customerId, cardId: vault.cardId }
+        : dto.cardToken
+        ? { cardToken: dto.cardToken }
         : {
             cardNumber:     dto.cardNumber,
             cardHolderName: dto.cardHolderName,
@@ -310,7 +328,7 @@ export class PaymentsService {
 
     const cardLast4 = dto.useSavedCard
       ? buyer.savedCard!.last4
-      : (dto.cardNumber ?? '').replace(/\D/g, '').slice(-4);
+      : cardToSave?.last4 ?? dto.cardLast4 ?? (dto.cardNumber ?? '').replace(/\D/g, '').slice(-4);
 
     if (cardToSave && vault) {
       if (isPaid) {
@@ -391,6 +409,27 @@ export class PaymentsService {
       orderId:  dto.orderId,
       chargeId: charge.id,
     };
+  }
+
+  /**
+   * What the app needs to tokenize cards. The public key is only handed out
+   * when it matches the secret key's mode — a live token cannot be charged
+   * with a test secret key (or vice versa), and the app then falls back to
+   * sending the card to this server as before.
+   */
+  getPaymentConfig(): { cardTokenizationKey: string | null } {
+    const publicKey = this.config.get('pagarme.publicKey', { infer: true });
+    const secretKey = this.config.get('pagarme.apiKey', { infer: true });
+    if (!publicKey || !secretKey) return { cardTokenizationKey: null };
+    const publicTest = publicKey.startsWith('pk_test_');
+    const secretTest = secretKey.startsWith('sk_test_');
+    if (publicTest !== secretTest) {
+      this.logger.error(
+        `PAGARME_PUBLIC_KEY is a ${publicTest ? 'test' : 'live'} key but PAGARME_API_KEY is ${secretTest ? 'test' : 'live'} — card tokenization disabled`,
+      );
+      return { cardTokenizationKey: null };
+    }
+    return { cardTokenizationKey: publicKey };
   }
 
   /** Forget the saved card: removed from Pagar.me's vault and from the account. */

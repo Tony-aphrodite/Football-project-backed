@@ -147,6 +147,12 @@ class EnvVars {
   @IsOptional()
   PAGARME_API_KEY?: string;
 
+  // Public key (pk_…) the app uses to tokenize cards straight with Pagar.me.
+  // Must be from the same mode (test/live) as PAGARME_API_KEY.
+  @IsString()
+  @IsOptional()
+  PAGARME_PUBLIC_KEY?: string;
+
   @IsString()
   @IsOptional()
   PAGARME_WEBHOOK_SECRET?: string;
@@ -260,6 +266,7 @@ export interface AppConfig {
   };
   pagarme: {
     apiKey?: string;
+    publicKey?: string;
     webhookSecret?: string;
     arenaRecipientId?: string;
   };
@@ -333,6 +340,7 @@ export default (): AppConfig => {
     },
     pagarme: {
       apiKey:             env.PAGARME_API_KEY,
+      publicKey:          env.PAGARME_PUBLIC_KEY,
       webhookSecret:      env.PAGARME_WEBHOOK_SECRET,
       arenaRecipientId:   env.PAGARME_ARENA_RECIPIENT_ID,
     },

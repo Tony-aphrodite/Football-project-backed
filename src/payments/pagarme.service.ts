@@ -26,6 +26,12 @@ export interface PagarmeOrder {
   charges: PagarmeCharge[];
 }
 
+export interface CardBillingAddress { line1: string; zipCode: string; city: string; state: string }
+
+function billingAddressBody(a: CardBillingAddress) {
+  return { line_1: a.line1, zip_code: a.zipCode, city: a.city, state: a.state, country: 'BR' };
+}
+
 /** A card kept in Pagar.me's vault. We only ever store its id and display data. */
 export interface PagarmeCard {
   id: string;
@@ -63,6 +69,8 @@ export interface CreateCardOrderParams {
   // Either a card stored in Pagar.me's vault (customerId + cardId)…
   customerId?:     string;
   cardId?:         string;
+  // …or a single-use token the app created with the public key…
+  cardToken?:      string;
   // …or the card typed in for this purchase only.
   cardNumber?:     string;        // raw digits
   cardHolderName?: string;
@@ -210,6 +218,10 @@ export class PagarmeService {
             statement_descriptor: 'Arena dos Mantos',
             ...(useVault
               ? { card_id: params.cardId }
+              : params.cardToken
+              // card and card_token are mutually exclusive, so no billing address
+              // here — same as the typed-card charge, which works without one.
+              ? { card_token: params.cardToken }
               : {
                   card: {
                     number:      (params.cardNumber ?? '').replace(/\D/g, ''),
@@ -362,29 +374,21 @@ export class PagarmeService {
     });
   }
 
-  async createCustomerCard(customerId: string, card: {
-    number: string;
-    holderName: string;
-    expMonth: number;
-    expYear: number;
-    cvv: string;
-    billingAddress?: { line1: string; zipCode: string; city: string; state: string };
-  }): Promise<PagarmeCard> {
+  async createCustomerCard(customerId: string, card: (
+    | { token: string }
+    | { number: string; holderName: string; expMonth: number; expYear: number; cvv: string }
+  ) & { billingAddress?: CardBillingAddress }): Promise<PagarmeCard> {
+    const billing = card.billingAddress ? { billing_address: billingAddressBody(card.billingAddress) } : {};
+    if ('token' in card) {
+      return this.request('POST', `/customers/${customerId}/cards`, { token: card.token, ...billing });
+    }
     return this.request('POST', `/customers/${customerId}/cards`, {
       number:      card.number.replace(/\D/g, ''),
       holder_name: card.holderName,
       exp_month:   card.expMonth,
       exp_year:    card.expYear,
       cvv:         card.cvv,
-      ...(card.billingAddress ? {
-        billing_address: {
-          line_1:   card.billingAddress.line1,
-          zip_code: card.billingAddress.zipCode,
-          city:     card.billingAddress.city,
-          state:    card.billingAddress.state,
-          country:  'BR',
-        },
-      } : {}),
+      ...billing,
     });
   }
 

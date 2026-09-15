@@ -43,6 +43,12 @@ export class PaymentsController {
     return this.payments.initiateCardPayment(user.sub, dto);
   }
 
+  /** Public payment settings for the app (the Pagar.me public key is meant to be public). */
+  @Get('config')
+  getPaymentConfig(): { cardTokenizationKey: string | null } {
+    return this.payments.getPaymentConfig();
+  }
+
   /** Remove the card saved for one-tap purchases. */
   @Delete('card/saved')
   @HttpCode(204)
