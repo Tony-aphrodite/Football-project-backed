@@ -401,6 +401,17 @@ export class PagarmeService {
     await this.request('DELETE', `/customers/${customerId}/cards/${cardId}`);
   }
 
+  /** Whether a recipient id exists in the account the secret key belongs to. */
+  async recipientExists(recipientId: string): Promise<{ exists: boolean; status?: string }> {
+    try {
+      const r = await this.request<{ status?: string }>('GET', `/recipients/${recipientId}`);
+      return { exists: true, status: r.status };
+    } catch (err) {
+      if ((err as { status?: number }).status === 404) return { exists: false };
+      throw err;
+    }
+  }
+
   /** Fetches available balance for a recipient. Returns amount in cents. */
   async getRecipientBalance(recipientId: string): Promise<{ available: number; waitingFunds: number }> {
     const data = await this.request<{ available?: { amount?: number }; waiting_funds?: { amount?: number } }>(

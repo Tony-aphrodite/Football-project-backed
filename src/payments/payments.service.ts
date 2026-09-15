@@ -552,8 +552,13 @@ export class PaymentsService {
     const order = await this.db.get<OrderRecord & { pagarmeOrderId?: string }>(orderKey.PK, orderKey.SK);
     if (!order?.pagarmeOrderId) throw new NotFoundException('Order has no Pagar.me order');
     const remote = await this.pagarme.getOrder(order.pagarmeOrderId);
+    const sellerKey = Keys.user(order.sellerId);
+    const seller = await this.db.get<{ pagarmeRecipientId?: string }>(sellerKey.PK, sellerKey.SK);
+    const arenaId = this.config.get('pagarme.arenaRecipientId', { infer: true });
+    const check = async (id?: string) => (id ? { idSuffix: id.slice(-6), ...(await this.pagarme.recipientExists(id)) } : null);
     return {
       orderId,
+      recipients: { arena: await check(arenaId), seller: await check(seller?.pagarmeRecipientId) },
       localStatus: order.status,
       pagarmeStatus: remote.status,
       charges: (remote.charges ?? []).map((c) => ({
