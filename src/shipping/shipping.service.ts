@@ -189,7 +189,7 @@ export class ShippingService {
   }): Promise<LabelResult | null> {
     if (!this.token) {
       this.logger.warn('MELHOR_ENVIO_TOKEN not set — skipping label purchase');
-      return null;
+      throw new Error('MELHOR_ENVIO_TOKEN não configurado');
     }
     try {
       // Step 1: Add to cart
@@ -227,8 +227,11 @@ export class ShippingService {
         method: 'POST', headers: this.headers, body: JSON.stringify(cartBody),
       });
       if (!cartRes.ok) {
-        this.logger.error(`Melhor Envio cart error ${cartRes.status}: ${await cartRes.text()}`);
-        return null;
+        // The reason has to travel with the error: it ends up on the order, and
+        // the server logs are not reachable from the app or admin.
+        const body = await cartRes.text();
+        this.logger.error(`Melhor Envio cart error ${cartRes.status}: ${body}`);
+        throw new Error(`Melhor Envio carrinho ${cartRes.status}: ${body.slice(0, 300)}`);
       }
       const cartItem = (await cartRes.json()) as CartItem;
 
@@ -239,8 +242,9 @@ export class ShippingService {
         body: JSON.stringify({ orders: [cartItem.id] }),
       });
       if (!checkoutRes.ok) {
-        this.logger.error(`Melhor Envio checkout error ${checkoutRes.status}: ${await checkoutRes.text()}`);
-        return null;
+        const body = await checkoutRes.text();
+        this.logger.error(`Melhor Envio checkout error ${checkoutRes.status}: ${body}`);
+        throw new Error(`Melhor Envio checkout ${checkoutRes.status}: ${body.slice(0, 300)}`);
       }
 
       // Step 3: Get label print URL
@@ -267,7 +271,7 @@ export class ShippingService {
       };
     } catch (err) {
       this.logger.error('Melhor Envio label purchase failed', err);
-      return null;
+      throw err;
     }
   }
 
