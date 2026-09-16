@@ -73,6 +73,8 @@ export interface CardPaymentResult {
 @Injectable()
 export class PaymentsService {
   private readonly logger = new Logger(PaymentsService.name);
+  /** Memoised sandbox check for Arena's recipient. */
+  private arenaRecipientOk?: Promise<boolean>;
 
   constructor(
     private readonly db:          DynamoDbService,
@@ -131,8 +133,7 @@ export class PaymentsService {
     // Load seller for recipient ID (split payment)
     const sellerKey = Keys.user(order.sellerId);
     const seller    = await this.db.get<{ pagarmeRecipientId?: string }>(sellerKey.PK, sellerKey.SK);
-    const arenaRecipientId  = this.config.get('pagarme.arenaRecipientId', { infer: true });
-    const sellerRecipientId = seller?.pagarmeRecipientId;
+    const split = await this.splitRecipients(seller?.pagarmeRecipientId);
 
     const pagarmeOrder = await this.pagarme.createPixOrder({
       externalCode:     `ARENA-${orderId}`,
@@ -144,8 +145,8 @@ export class PaymentsService {
       itemDescription:  `Camisa ${order.teamName} — ${order.supplier} ${order.season}`,
       expiresInSeconds: 86_400,
       // Include split only when both recipient IDs are configured
-      arenaRecipientId,
-      sellerRecipientId,
+      arenaRecipientId:  split?.arena,
+      sellerRecipientId: split?.seller,
       commissionPct: 7,
     });
 
@@ -243,8 +244,7 @@ export class PaymentsService {
     // Load seller for split payment
     const sellerKey = Keys.user(order.sellerId);
     const seller    = await this.db.get<{ pagarmeRecipientId?: string }>(sellerKey.PK, sellerKey.SK);
-    const arenaRecipientId  = this.config.get('pagarme.arenaRecipientId', { infer: true });
-    const sellerRecipientId = seller?.pagarmeRecipientId;
+    const split = await this.splitRecipients(seller?.pagarmeRecipientId);
 
     const billingAddress = buyer.sellerCep && buyer.sellerRua && buyer.sellerCidade && buyer.sellerEstado
       ? {
@@ -337,8 +337,8 @@ export class PaymentsService {
             cardExpYear:    dto.cardExpYear,
             cardCvv:        dto.cardCvv,
           }),
-      arenaRecipientId,
-      sellerRecipientId,
+      arenaRecipientId:  split?.arena,
+      sellerRecipientId: split?.seller,
       commissionPct: 7,
     });
 
@@ -556,6 +556,38 @@ export class PaymentsService {
       if (await this.cancelUnpaidOrder(order.orderId, `unpaid after ${Math.round(ageMin)} min`)) cancelled++;
     }
     if (cancelled > 0) this.logger.log(`Expired ${cancelled} unpaid order(s)`);
+  }
+
+  /**
+   * The two recipients a charge is split between, or null when there is no
+   * usable split.
+   *
+   * In sandbox the split is dropped (with a warning) when Arena's recipient is
+   * missing, unknown to Pagar.me, or the same as the seller's — otherwise
+   * every test payment fails on "Recipient not found" and nothing else can be
+   * tested. In production the split is never dropped: the money must be shared
+   * correctly, so a broken setup has to fail loudly instead.
+   */
+  private async splitRecipients(sellerRecipientId?: string): Promise<{ arena: string; seller: string } | null> {
+    const arena = this.config.get('pagarme.arenaRecipientId', { infer: true });
+    if (!arena || !sellerRecipientId) return null;
+
+    const sandbox = !!this.config.get('pagarme.apiKey', { infer: true })?.startsWith('sk_test_');
+    if (!sandbox) return { arena, seller: sellerRecipientId };
+
+    if (arena === sellerRecipientId) {
+      this.logger.warn('Sandbox: Arena and seller share a recipient — charging without split');
+      return null;
+    }
+    // Checked once per process; a sandbox account rarely changes mid-run.
+    this.arenaRecipientOk ??= this.pagarme.recipientExists(arena)
+      .then((r) => r.exists)
+      .catch(() => true);
+    if (!(await this.arenaRecipientOk)) {
+      this.logger.warn(`Sandbox: Arena recipient ${arena} does not exist in Pagar.me — charging without split`);
+      return null;
+    }
+    return { arena, seller: sellerRecipientId };
   }
 
   /** Admin: recipients in the Pagar.me account, to pick the right split IDs. */
