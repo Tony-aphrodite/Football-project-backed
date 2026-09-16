@@ -2,6 +2,7 @@ import { Controller, Get } from '@nestjs/common';
 import { SkipThrottle } from '@nestjs/throttler';
 import { EmailService } from '../email/email.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { ShippingService } from '../shipping/shipping.service';
 
 /**
  * Public health endpoint consumed by Railway's healthcheck (see railway.toml)
@@ -14,6 +15,7 @@ export class HealthController {
   constructor(
     private readonly email: EmailService,
     private readonly push: NotificationsService,
+    private readonly shipping: ShippingService,
   ) {}
 
   @Get()
@@ -45,6 +47,12 @@ export class HealthController {
       // push to the deploy repo resulted in a deploy.
       build:      process.env.RAILWAY_GIT_COMMIT_SHA?.slice(0, 7) ?? 'unknown',
     };
+  }
+
+  /** Whether Melhor Envio labels can be bought. Never exposes the token. */
+  @Get('shipping')
+  shippingStatus(): Promise<unknown> {
+    return this.shipping.health();
   }
 
   /** Whether push can actually be delivered. Never exposes the key. */

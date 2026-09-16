@@ -178,6 +178,25 @@ export class ShippingService {
     };
   }
 
+  /**
+   * Can we actually buy labels? Melhor Envio tokens expire, and until now an
+   * expired one only showed up as a purchase that silently produced no label.
+   */
+  async health(): Promise<{ configured: boolean; sandbox: boolean; authenticated: boolean; account?: string; error?: string }> {
+    const base = { configured: !!this.token, sandbox: this.sandbox };
+    if (!this.token) return { ...base, authenticated: false, error: 'MELHOR_ENVIO_TOKEN não configurado' };
+    try {
+      const res = await fetch(`${this.baseUrl}/api/v2/me`, { headers: this.headers });
+      if (!res.ok) {
+        return { ...base, authenticated: false, error: `${res.status}: ${(await res.text()).slice(0, 200)}` };
+      }
+      const me = (await res.json()) as { firstname?: string; email?: string };
+      return { ...base, authenticated: true, account: me.email ?? me.firstname };
+    } catch (err) {
+      return { ...base, authenticated: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  }
+
   async purchaseLabel(params: {
     orderId:      string;
     from:         ShippingAddress;
