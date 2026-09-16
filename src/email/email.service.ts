@@ -28,6 +28,9 @@ export interface SendResult {
 
 const FROM_NAME  = 'Arena dos Mantos';
 const FROM_EMAIL = process.env.EMAIL_FROM ?? 'noreply@arenadosmantos.app.br';
+// Mail goes out from noreply@, which nobody reads. Replies are steered to the
+// real inbox instead, so "responda este e-mail" is not a dead end.
+const REPLY_TO   = process.env.EMAIL_REPLY_TO ?? 'contato@arenadosmantos.app.br';
 
 @Injectable()
 export class EmailService {
@@ -112,6 +115,7 @@ export class EmailService {
       body: JSON.stringify({
         from: `${FROM_NAME} <${FROM_EMAIL}>`,
         to:   [to],
+        reply_to: REPLY_TO,
         subject,
         html,
       }),
@@ -124,6 +128,7 @@ export class EmailService {
       headers: { 'api-key': this.brevoKey!, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         sender:      { name: FROM_NAME, email: FROM_EMAIL },
+        replyTo:     { name: FROM_NAME, email: REPLY_TO },
         to:          [{ email: to }],
         subject,
         htmlContent: html,

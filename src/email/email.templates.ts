@@ -13,6 +13,8 @@ const TEXTO   = '#2E2A24';
 const SUAVE   = '#6B6357';
 
 const SITE = 'https://www.arenadosmantos.app.br';
+// Mail is sent from noreply@, so every template points here instead.
+const CONTATO = 'contato@arenadosmantos.app.br';
 // Must be an absolute public URL — email clients cannot read bundled assets.
 const LOGO = `${SITE}/stadium.png`;
 
@@ -131,7 +133,7 @@ export function welcomeEmail(name: string): EmailContent {
         <li>Avaliar e ser avaliado, construindo sua reputação na Arena</li>
       </ul>
       ${p(`Todo pagamento fica retido até o comprador confirmar o recebimento — segurança para os dois lados.`)}
-      ${p(`<span style="color:${SUAVE};font-size:13px">Dúvidas? Basta responder este e-mail.</span>`)}
+      ${p(`<span style="color:${SUAVE};font-size:13px">Dúvidas? Escreva para <a href="mailto:${CONTATO}" style="color:${SUAVE}">${CONTATO}</a>.</span>`)}
     `),
   };
 }
@@ -338,7 +340,7 @@ export function disputeOpenedSellerEmail(d: OrderEmailData, reason: string): Ema
           <strong>O pagamento ficou retido</strong> até a resolução. Nossa equipe entrará em contato em breve.
         </td></tr>
       </table>
-      ${p('Responda este e-mail com qualquer informação que ajude a resolver — comprovante de postagem, fotos do envio, conversas com o comprador.')}
+      ${p(`Envie para <a href="mailto:${CONTATO}" style="color:${TEXTO};font-weight:700">${CONTATO}</a> qualquer informação que ajude a resolver — comprovante de postagem, fotos do envio, conversas com o comprador.`)}
     `),
   };
 }
@@ -363,9 +365,9 @@ export function orderPaidBuyerEmail(d: OrderEmailData): EmailContent {
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
              style="background:#FEF3C7;border:1px solid #FDE68A;border-radius:12px;padding:14px 16px;margin:16px 0">
         <tr><td style="color:#92400E;font-size:14px;line-height:21px">
-          <strong>Se você não fez esta compra</strong>, entre em contato com
-          <a href="mailto:contato@arenadosmantos.app.br" style="color:#92400E;font-weight:700">contato@arenadosmantos.app.br</a>
-          ou responda este e-mail agora. O valor fica retido e ainda não foi repassado ao vendedor.
+          <strong>Se você não fez esta compra</strong>, entre em contato agora com
+          <a href="mailto:${CONTATO}" style="color:#92400E;font-weight:700">${CONTATO}</a>.
+          O valor fica retido e ainda não foi repassado ao vendedor.
         </td></tr>
       </table>
     `),
