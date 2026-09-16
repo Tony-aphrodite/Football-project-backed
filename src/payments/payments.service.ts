@@ -590,6 +590,17 @@ export class PaymentsService {
     return { arena, seller: sellerRecipientId };
   }
 
+  /** Admin: try buying the shipping label again for a paid order. */
+  async retryShippingLabel(orderId: string): Promise<{ started: boolean; status: string }> {
+    const k = Keys.order(orderId);
+    const order = await this.db.get<OrderRecord>(k.PK, k.SK);
+    if (!order) throw new NotFoundException('Order not found');
+    if (order.status !== 'PAID') return { started: false, status: order.status };
+    await this.purchaseLabelAsync(order);
+    const after = await this.db.get<OrderRecord & { shippingLabelError?: string; shippingTrackingCode?: string }>(k.PK, k.SK);
+    return { started: true, status: `${after?.status} tracking=${after?.shippingTrackingCode ?? 'none'} error=${after?.shippingLabelError ?? 'none'}` };
+  }
+
   /** Admin: recipients in the Pagar.me account, to pick the right split IDs. */
   async listRecipients(): Promise<unknown> {
     const configured = this.config.get('pagarme.arenaRecipientId', { infer: true });
@@ -786,6 +797,16 @@ export class PaymentsService {
     void this.email.send(buyer?.email, buyerMail.subject, buyerMail.html);
   }
 
+  /** Keep the reason on the order: logs are not visible from the app or admin. */
+  private async recordLabelError(orderId: string, reason: string): Promise<void> {
+    const k = Keys.order(orderId);
+    await this.db.update({
+      Key: { PK: k.PK, SK: k.SK },
+      UpdateExpression: 'SET shippingLabelError = :e, shippingLabelErrorAt = :now',
+      ExpressionAttributeValues: { ':e': reason.slice(0, 500), ':now': new Date().toISOString() },
+    }).catch(() => undefined);
+  }
+
   private async purchaseLabelAsync(order: OrderRecord): Promise<void> {
     try {
       const [seller, buyer] = await Promise.all([
@@ -811,6 +832,10 @@ export class PaymentsService {
           `Label NOT purchased for order ${order.orderId} — incomplete address. ` +
           `Seller missing: [${sellerMissing.join(', ') || 'none'}]; ` +
           `buyer missing: [${buyerMissing.join(', ') || 'none'}]`,
+        );
+        await this.recordLabelError(
+          order.orderId,
+          `Endereço incompleto — vendedor: [${sellerMissing.join(', ') || 'ok'}], comprador: [${buyerMissing.join(', ') || 'ok'}]`,
         );
         return;
       }
@@ -921,9 +946,12 @@ export class PaymentsService {
         // inside the app — send it to the seller so they can just print it.
         const labelMail = shippingLabelEmail(shipData);
         void this.email.send(seller.email, labelMail.subject, labelMail.html);
+      } else {
+        await this.recordLabelError(order.orderId, 'Melhor Envio não retornou etiqueta');
       }
     } catch (err) {
       this.logger.error(`Label purchase failed for order ${order.orderId}`, err);
+      await this.recordLabelError(order.orderId, err instanceof Error ? err.message : String(err));
     }
   }
 }

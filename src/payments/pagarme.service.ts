@@ -220,7 +220,9 @@ export class PagarmeService {
           amount: params.amountCents,
           credit_card: {
             installments: params.installments,
-            statement_descriptor: 'Arena dos Mantos',
+            // What shows on the card statement. Pagar.me allows 13 characters;
+            // 'Arena dos Mantos' (16) is refused as an invalid soft descriptor.
+            statement_descriptor: 'ARENAMANTOS',
             ...(useVault
               ? { card_id: params.cardId }
               : params.cardToken

@@ -44,6 +44,13 @@ export class PaymentsController {
     return this.payments.initiateCardPayment(user.sub, dto);
   }
 
+  /** Admin: retry the Correios label for a paid order. */
+  @Post('admin/retry-label/:orderId')
+  @UseGuards(AdminGuard)
+  retryLabel(@Param('orderId') orderId: string): Promise<unknown> {
+    return this.payments.retryShippingLabel(orderId);
+  }
+
   /** Admin: list Pagar.me recipients (no bank details returned). */
   @Get('admin/recipients')
   @UseGuards(AdminGuard)
