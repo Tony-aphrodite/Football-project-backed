@@ -13,6 +13,7 @@ import type { CreateListingDto } from './dto/create-listing.dto';
 import type { UpdatePriceDto } from './dto/update-price.dto';
 import type { UpdateListingDto } from './dto/update-listing.dto';
 import { AlgoliaService, type ListingIndexRecord } from '../search/algolia.service';
+import { maskContacts } from '../common/contact-filter';
 
 const LISTING_CAP = 20;
 
@@ -97,7 +98,7 @@ export class ListingsService {
       condition:             dto.condition,
       gender:                dto.gender,
       priceCents:            dto.priceCents,
-      description:           dto.description,
+      description:           maskContacts(dto.description).text || undefined,
       weightGrams:           dto.weightGrams,
       sku:                   dto.sku,
       photoKeys:             [],
@@ -214,7 +215,12 @@ export class ListingsService {
     if (record.status === 'REMOVED') throw new BadRequestException('Listing already removed');
     if (record.status === 'SOLD') throw new BadRequestException('Cannot edit a sold listing');
 
-    const entries = Object.entries(dto).filter(([, v]) => v !== undefined);
+    // An edited description goes through the contact filter too, otherwise a
+    // seller could publish a clean listing and add their phone afterwards.
+    const entries = Object.entries({
+      ...dto,
+      ...(dto.description !== undefined ? { description: maskContacts(dto.description).text } : {}),
+    }).filter(([, v]) => v !== undefined);
     if (entries.length === 0) return toListingPublic(record);
 
     const now = new Date().toISOString();

@@ -11,6 +11,7 @@ import { Keys, Gsi } from '../dynamodb/keys';
 import { CommentRecord, CommentPublic, toCommentPublic } from './entities/comment.entity';
 import type { CreateCommentDto } from './dto/create-comment.dto';
 import type { ReportCommentDto } from './dto/report-comment.dto';
+import { maskContacts } from '../common/contact-filter';
 
 @Injectable()
 export class CommentsService {
@@ -25,6 +26,15 @@ export class CommentsService {
     const user = await this.db.get<{ displayName: string }>(userKey.PK, userKey.SK);
     if (!user) throw new NotFoundException('User not found');
 
+    // Deals belong inside the app, where the payment is protected: contacts
+    // are hidden before the comment is stored, never after.
+    const { text: body, masked } = maskContacts(dto.body);
+    if (!body.replace(/•/g, '').trim()) {
+      throw new BadRequestException(
+        'Comentários com contatos externos não são permitidos. Negocie pelo app.',
+      );
+    }
+
     const now       = new Date().toISOString();
     const commentId = ulid();
     const ck        = Keys.comment(listingId, now, commentId);
@@ -36,7 +46,7 @@ export class CommentsService {
       listingId,
       authorId,
       authorName:  user.displayName,
-      body:        dto.body,
+      body,
       status:      'ACTIVE',
       reportCount: 0,
       createdAt:   now,
@@ -44,7 +54,7 @@ export class CommentsService {
     };
 
     await this.db.put(record as unknown as Record<string, unknown>);
-    return toCommentPublic(record);
+    return { ...toCommentPublic(record), contactHidden: masked };
   }
 
   async list(listingId: string): Promise<CommentPublic[]> {

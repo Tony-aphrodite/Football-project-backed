@@ -22,6 +22,8 @@ export interface CommentPublic {
   status:     'ACTIVE' | 'REMOVED';
   reportCount: number;
   createdAt:  string;
+  /** Set on create when contact details were hidden, so the app can explain. */
+  contactHidden?: boolean;
 }
 
 export function toCommentPublic(c: CommentRecord): CommentPublic {
