@@ -44,6 +44,13 @@ export class PaymentsController {
     return this.payments.initiateCardPayment(user.sub, dto);
   }
 
+  /** Admin: list Pagar.me recipients (no bank details returned). */
+  @Get('admin/recipients')
+  @UseGuards(AdminGuard)
+  listRecipients(): Promise<unknown> {
+    return this.payments.listRecipients();
+  }
+
   /** Admin: ask Pagar.me why an order's card charge failed (no card data returned). */
   @Get('admin/diagnose/:orderId')
   @UseGuards(AdminGuard)

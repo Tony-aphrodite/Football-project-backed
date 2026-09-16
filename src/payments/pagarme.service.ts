@@ -401,6 +401,21 @@ export class PagarmeService {
     await this.request('DELETE', `/customers/${customerId}/cards/${cardId}`);
   }
 
+  /** Recipients registered in the account the secret key belongs to. */
+  async listRecipients(): Promise<{ id: string; name?: string; type?: string; status?: string; document?: string; default?: boolean }[]> {
+    const data = await this.request<{ data?: { id: string; name?: string; type?: string; status?: string; document?: string; default_bank_account?: unknown; payment_mode?: string }[] }>(
+      'GET', '/recipients?size=30',
+    );
+    return (data.data ?? []).map((r) => ({
+      id:       r.id,
+      name:     r.name,
+      type:     r.type,
+      status:   r.status,
+      // Only the last digits, enough to tell whose recipient it is.
+      document: r.document ? `•••${r.document.slice(-4)}` : undefined,
+    }));
+  }
+
   /** Whether a recipient id exists in the account the secret key belongs to. */
   async recipientExists(recipientId: string): Promise<{ exists: boolean; status?: string }> {
     try {

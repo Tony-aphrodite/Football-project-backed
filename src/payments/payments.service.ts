@@ -558,6 +558,17 @@ export class PaymentsService {
     if (cancelled > 0) this.logger.log(`Expired ${cancelled} unpaid order(s)`);
   }
 
+  /** Admin: recipients in the Pagar.me account, to pick the right split IDs. */
+  async listRecipients(): Promise<unknown> {
+    const configured = this.config.get('pagarme.arenaRecipientId', { infer: true });
+    const recipients = await this.pagarme.listRecipients();
+    return {
+      configuredArenaRecipientId: configured,
+      configuredExists: recipients.some((r) => r.id === configured),
+      recipients,
+    };
+  }
+
   /** Admin diagnostics: Pagar.me's view of an order's charges, decline reasons only. */
   async diagnosePagarmeOrder(orderId: string): Promise<unknown> {
     const orderKey = Keys.order(orderId);
