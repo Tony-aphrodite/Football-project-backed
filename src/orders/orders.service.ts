@@ -334,6 +334,46 @@ export class OrdersService {
     void this.email.send(seller?.email, rateBuyer.subject, rateBuyer.html);
   }
 
+  /**
+   * Seller confirms the package is with the Correios. Uses the label's tracking
+   * code when there is one — Melhor Envio sometimes has none yet, and the sale
+   * must not be stuck because of that.
+   */
+  async markShipped(sellerId: string, orderId: string): Promise<OrderPublic> {
+    const k = Keys.order(orderId);
+    const order = await this.db.get<OrderRecord>(k.PK, k.SK);
+    if (!order) throw new NotFoundException('Order not found');
+    if (order.sellerId !== sellerId) throw new ForbiddenException('Not your order');
+    if (order.shippingTrackingCode) return this.addTracking(sellerId, orderId, order.shippingTrackingCode);
+    if (order.status !== 'PAID') throw new BadRequestException('Order is not awaiting shipment');
+
+    const now = new Date().toISOString();
+    await this.db.update({
+      Key: { PK: k.PK, SK: k.SK },
+      UpdateExpression: 'SET #s = :shipped, escrowReleaseAt = :era, updatedAt = :now',
+      ConditionExpression: '#s = :paid',
+      ExpressionAttributeNames: { '#s': 'status' },
+      ExpressionAttributeValues: {
+        ':shipped': 'SHIPPED',
+        ':paid':    'PAID',
+        ':era':     new Date(Date.now() + 7 * 24 * 3_600_000).toISOString(),
+        ':now':     now,
+      },
+    });
+
+    const buyer = await this.users.findById(order.buyerId).catch(() => null);
+    void this.notifications.send(
+      buyer?.expoPushToken,
+      '📦 Seu pedido foi enviado!',
+      `${order.teamName} está a caminho.`,
+      { orderId: order.orderId, screen: 'OrderDetail' },
+    );
+    const shippedMail = orderShippedBuyerEmail(this.emailData(order));
+    void this.email.send(buyer?.email, shippedMail.subject, shippedMail.html);
+
+    return toOrderPublic({ ...order, status: 'SHIPPED', updatedAt: now });
+  }
+
   async addTracking(sellerId: string, orderId: string, correiosTracking: string): Promise<OrderPublic> {
     const k = Keys.order(orderId);
     const order = await this.db.get<OrderRecord>(k.PK, k.SK);

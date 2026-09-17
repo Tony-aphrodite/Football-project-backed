@@ -57,6 +57,16 @@ export class OrdersController {
     return this.orders.findOne(user.sub, id);
   }
 
+  @Patch(':id/shipped')
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard)
+  markShipped(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') orderId: string,
+  ): Promise<OrderPublic> {
+    return this.orders.markShipped(user.sub, orderId);
+  }
+
   @Patch(':id/confirm-receipt')
   @HttpCode(204)
   @UseGuards(JwtAuthGuard)

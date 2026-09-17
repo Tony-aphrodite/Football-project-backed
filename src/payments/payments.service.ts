@@ -615,14 +615,20 @@ export class PaymentsService {
       this.logger.warn(`Generate for ${orderId} said: ${err instanceof Error ? err.message : err}`);
     });
     const url = await this.shipping.labelLink(order.melhorEnvioOrderId);
+    const tracking = order.shippingTrackingCode
+      ?? (await this.shipping.trackingStatus([order.melhorEnvioOrderId]).catch((): Record<string, { status?: string; tracking?: string }> => ({})))[order.melhorEnvioOrderId]?.tracking;
     const undoShipped = order.status === 'SHIPPED' && !order.correiosTracking;
     await this.db.update({
       Key: { PK: k.PK, SK: k.SK },
-      UpdateExpression: `SET shippingLabelUrl = :u, updatedAt = :now${undoShipped ? ', #s = :paid' : ''}`,
+      UpdateExpression: `SET shippingLabelUrl = :u, updatedAt = :now${tracking ? ', shippingTrackingCode = :t' : ''}${undoShipped ? ', #s = :paid' : ''}`,
       ...(undoShipped ? { ExpressionAttributeNames: { '#s': 'status' } } : {}),
-      ExpressionAttributeValues: { ':u': url, ':now': new Date().toISOString(), ...(undoShipped ? { ':paid': 'PAID' } : {}) },
+      ExpressionAttributeValues: {
+        ':u': url, ':now': new Date().toISOString(),
+        ...(tracking ? { ':t': tracking } : {}),
+        ...(undoShipped ? { ':paid': 'PAID' } : {}),
+      },
     });
-    return { orderId, labelLinkUpdated: !!url, status: undoShipped ? 'PAID' : order.status };
+    return { orderId, labelLinkUpdated: !!url, tracking: tracking ?? null, status: undoShipped ? 'PAID' : order.status };
   }
 
   /** Admin: recipients in the Pagar.me account, to pick the right split IDs. */

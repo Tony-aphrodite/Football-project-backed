@@ -322,6 +322,10 @@ export class ShippingService {
       // Step 3: Generate the label, then Step 4: get the print link.
       await this.generateLabel(cartItem.id);
       const labelUrl = await this.labelLink(cartItem.id);
+      // The carrier tracking code only exists after generation.
+      const tracking = cartItem.tracking
+        ?? (await this.trackingStatus([cartItem.id]).catch((): Record<string, { status?: string; tracking?: string }> => ({})))[cartItem.id]?.tracking
+        ?? '';
 
       const actualCostCents = cartItem.price
         ? Math.round(parseFloat(cartItem.price) * 100)
@@ -331,7 +335,7 @@ export class ShippingService {
 
       return {
         melhorEnvioOrderId: cartItem.id,
-        trackingCode:       cartItem.tracking,
+        trackingCode:       tracking,
         carrier:            cartItem.carrier?.name ?? 'Correios',
         service:            cartItem.service?.name ?? '',
         labelUrl,
