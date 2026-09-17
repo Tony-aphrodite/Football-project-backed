@@ -16,6 +16,7 @@ import { ShippingEstimateDto } from './dto/shipping-estimate.dto';
 import { UpdateTrackingDto } from './dto/update-tracking.dto';
 import { DisputeOrderDto } from './dto/dispute-order.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { AdminGuard } from '../common/guards/admin.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { JwtPayload } from '../auth/types/jwt-payload.type';
 import type { OrderPublic } from './entities/order.entity';
@@ -55,6 +56,15 @@ export class OrdersController {
     @Param('id') id: string,
   ): Promise<OrderPublic> {
     return this.orders.findOne(user.sub, id);
+  }
+
+  /** Admin: run the escrow release now instead of waiting for the 6-hourly job. */
+  @Post('admin/run-auto-release')
+  @HttpCode(200)
+  @UseGuards(AdminGuard)
+  async runAutoRelease(): Promise<{ ok: true }> {
+    await this.orders.runAutoRelease();
+    return { ok: true };
   }
 
   @Patch(':id/shipped')
