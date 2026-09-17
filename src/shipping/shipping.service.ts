@@ -197,6 +197,41 @@ export class ShippingService {
     }
   }
 
+  /**
+   * Printable label link. 'public' opens without a Melhor Envio login — a
+   * 'private' link only works for whoever is signed in to Arena's Melhor Envio
+   * account, which no seller is. The link is only ever given to the seller.
+   */
+  async labelLink(melhorEnvioOrderId: string): Promise<string> {
+    const res = await fetch(`${this.baseUrl}/api/v2/me/shipment/print`, {
+      method: 'POST',
+      headers: this.headers,
+      body: JSON.stringify({ mode: 'public', orders: [melhorEnvioOrderId] }),
+    });
+    if (!res.ok) {
+      this.logger.warn(`Melhor Envio print link ${res.status}: ${(await res.text()).slice(0, 200)}`);
+      return '';
+    }
+    return ((await res.json()) as { url?: string }).url ?? '';
+  }
+
+  /**
+   * Carrier status per Melhor Envio order: 'released' (label paid, not yet
+   * posted), 'posted', 'delivered', 'canceled', …
+   */
+  async trackingStatus(melhorEnvioOrderIds: string[]): Promise<Record<string, { status?: string; tracking?: string }>> {
+    if (!this.token || melhorEnvioOrderIds.length === 0) return {};
+    const res = await fetch(`${this.baseUrl}/api/v2/me/shipment/tracking`, {
+      method: 'POST',
+      headers: this.headers,
+      body: JSON.stringify({ orders: melhorEnvioOrderIds }),
+    });
+    if (!res.ok) {
+      throw new Error(`Melhor Envio tracking ${res.status}: ${(await res.text()).slice(0, 200)}`);
+    }
+    return (await res.json()) as Record<string, { status?: string; tracking?: string }>;
+  }
+
   async purchaseLabel(params: {
     orderId:      string;
     from:         ShippingAddress;
@@ -267,12 +302,7 @@ export class ShippingService {
       }
 
       // Step 3: Get label print URL
-      const printRes = await fetch(`${this.baseUrl}/api/v2/me/shipment/print`, {
-        method: 'POST',
-        headers: this.headers,
-        body: JSON.stringify({ mode: 'private', orders: [cartItem.id] }),
-      });
-      const labelUrl = printRes.ok ? ((await printRes.json()) as { url: string }).url : '';
+      const labelUrl = await this.labelLink(cartItem.id);
 
       const actualCostCents = cartItem.price
         ? Math.round(parseFloat(cartItem.price) * 100)

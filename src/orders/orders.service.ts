@@ -250,7 +250,41 @@ export class OrdersService {
     // Sort by createdAt desc
     combined.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 
-    return combined.map(toOrderPublic);
+    return combined.map((o) => this.forViewer(o, userId));
+  }
+
+  /** The printable label is the seller's business; buyers only see the tracking code. */
+  private forViewer(order: OrderRecord, userId: string): OrderPublic {
+    const pub = toOrderPublic(order);
+    return order.sellerId === userId ? pub : { ...pub, shippingLabelUrl: undefined };
+  }
+
+  /**
+   * Mark as SHIPPED the paid orders whose label Melhor Envio now reports as
+   * posted or delivered, and tell the buyer. Runs hourly; the seller can also
+   * confirm by hand (addTracking), whichever happens first.
+   */
+  async syncCarrierStatus(): Promise<void> {
+    const paid = await this.db.scanAll<OrderRecord>({
+      FilterExpression: 'entityType = :o AND #s = :paid AND attribute_exists(melhorEnvioOrderId)',
+      ExpressionAttributeNames: { '#s': 'status' },
+      ExpressionAttributeValues: { ':o': 'Order', ':paid': 'PAID' },
+    });
+    if (paid.length === 0) return;
+
+    const statuses = await this.shipping.trackingStatus(paid.map((o) => o.melhorEnvioOrderId!));
+    for (const order of paid) {
+      const s = statuses[order.melhorEnvioOrderId!]?.status;
+      if (s !== 'posted' && s !== 'delivered') continue;
+      const code = order.shippingTrackingCode ?? statuses[order.melhorEnvioOrderId!]?.tracking;
+      if (!code) continue;
+      try {
+        await this.addTracking(order.sellerId, order.orderId, code);
+        this.logger.log(`Order ${order.orderId} posted per Melhor Envio (${s}) — marked SHIPPED`);
+      } catch (err) {
+        this.logger.warn(`Could not mark ${order.orderId} shipped from carrier status`, err);
+      }
+    }
   }
 
   async findOne(userId: string, orderId: string): Promise<OrderPublic> {
@@ -260,7 +294,7 @@ export class OrdersService {
     if (order.buyerId !== userId && order.sellerId !== userId) {
       throw new ForbiddenException('Not your order');
     }
-    return toOrderPublic(order);
+    return this.forViewer(order, userId);
   }
 
   async confirmReceipt(buyerId: string, orderId: string): Promise<void> {

@@ -8,6 +8,15 @@ export class OrdersScheduler {
 
   constructor(private readonly orders: OrdersService) {}
 
+  @Cron(CronExpression.EVERY_HOUR)
+  async handleCarrierSync(): Promise<void> {
+    try {
+      await this.orders.syncCarrierStatus();
+    } catch (err) {
+      this.logger.error('Carrier status sync failed', err);
+    }
+  }
+
   @Cron(CronExpression.EVERY_6_HOURS)
   async handleAutoRelease(): Promise<void> {
     this.logger.log('Running escrow auto-release check');

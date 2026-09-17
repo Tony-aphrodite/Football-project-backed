@@ -22,7 +22,6 @@ import { EmailService } from '../email/email.service';
 import {
   orderPaidBuyerEmail,
   orderPaidSellerEmail,
-  orderShippedBuyerEmail,
   shippingLabelEmail,
   type OrderEmailData,
 } from '../email/email.templates';
@@ -603,6 +602,25 @@ export class PaymentsService {
     return { started: true, status: `${after?.status} tracking=${after?.shippingTrackingCode ?? 'none'} error=${after?.shippingLabelError ?? 'none'}` };
   }
 
+  /**
+   * Admin: replace an order's label link with a public one, and put back to
+   * PAID an order that was marked SHIPPED only because its label was bought.
+   */
+  async refreshLabelLink(orderId: string): Promise<unknown> {
+    const k = Keys.order(orderId);
+    const order = await this.db.get<OrderRecord & { correiosTracking?: string }>(k.PK, k.SK);
+    if (!order?.melhorEnvioOrderId) throw new NotFoundException('Order has no Melhor Envio label');
+    const url = await this.shipping.labelLink(order.melhorEnvioOrderId);
+    const undoShipped = order.status === 'SHIPPED' && !order.correiosTracking;
+    await this.db.update({
+      Key: { PK: k.PK, SK: k.SK },
+      UpdateExpression: `SET shippingLabelUrl = :u, updatedAt = :now${undoShipped ? ', #s = :paid' : ''}`,
+      ...(undoShipped ? { ExpressionAttributeNames: { '#s': 'status' } } : {}),
+      ExpressionAttributeValues: { ':u': url, ':now': new Date().toISOString(), ...(undoShipped ? { ':paid': 'PAID' } : {}) },
+    });
+    return { orderId, labelLinkUpdated: !!url, status: undoShipped ? 'PAID' : order.status };
+  }
+
   /** Admin: recipients in the Pagar.me account, to pick the right split IDs. */
   async listRecipients(): Promise<unknown> {
     const configured = this.config.get('pagarme.arenaRecipientId', { infer: true });
@@ -904,10 +922,8 @@ export class PaymentsService {
             'shippingActualCostCents = :actual',
             'shippingSpreadCents = :spread',
             'spreadBeneficiary = :beneficiary',
-            '#st = :shipped',
             'updatedAt = :now',
           ].join(', '),
-          ExpressionAttributeNames: { '#st': 'status' },
           ExpressionAttributeValues: {
             ':m':           result.melhorEnvioOrderId,
             ':l':           result.labelUrl,
@@ -917,32 +933,24 @@ export class PaymentsService {
             ':actual':      result.actualCostCents,
             ':spread':      spreadCents,
             ':beneficiary': spreadResult.beneficiary,
-            ':shipped':     'SHIPPED',
             ':now':         new Date().toISOString(),
           },
         });
 
         this.logger.log(
-          `Order ${order.orderId} shipped. Tracking: ${result.trackingCode}. ` +
+          `Order ${order.orderId} label ready. Tracking: ${result.trackingCode}. ` +
           `Spread: R$${(spreadCents / 100).toFixed(2)} → ${spreadResult.beneficiary} ` +
           `(developer: R$${(spreadResult.developerGets / 100).toFixed(2)}, arena: R$${(spreadResult.arenaGets / 100).toFixed(2)})`
         );
 
-        // Notify buyer that item was shipped
-        void this.notifications.send(
-          buyer?.expoPushToken,
-          '📦 Seu pedido foi enviado!',
-          `${order.teamName} está a caminho. Rastreio: ${result.trackingCode}`,
-          { orderId: order.orderId, screen: 'OrderDetail' },
-        );
-
+        // Buying the label is not shipping: the buyer hears "a caminho" only
+        // once the package is actually posted (seller confirms, or Melhor
+        // Envio's tracking says so — OrdersService.syncCarrierStatus).
         const shipData: OrderEmailData = {
           ...this.emailData(order),
           tracking: result.trackingCode,
           labelUrl: result.labelUrl,
         };
-        const shippedMail = orderShippedBuyerEmail(shipData);
-        void this.email.send(buyer?.email, shippedMail.subject, shippedMail.html);
 
         // The Correios label is bought automatically but was only reachable
         // inside the app — send it to the seller so they can just print it.

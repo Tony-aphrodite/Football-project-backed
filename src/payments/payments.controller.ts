@@ -51,6 +51,13 @@ export class PaymentsController {
     return this.payments.retryShippingLabel(orderId);
   }
 
+  /** Admin: public label link + undo a premature SHIPPED. */
+  @Post('admin/refresh-label/:orderId')
+  @UseGuards(AdminGuard)
+  refreshLabel(@Param('orderId') orderId: string): Promise<unknown> {
+    return this.payments.refreshLabelLink(orderId);
+  }
+
   /** Admin: list Pagar.me recipients (no bank details returned). */
   @Get('admin/recipients')
   @UseGuards(AdminGuard)
