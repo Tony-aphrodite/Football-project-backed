@@ -450,6 +450,49 @@ export class OrdersService {
     void this.email.send(seller?.email, disputeMail.subject, disputeMail.html);
   }
 
+  /**
+   * Close a dispute. Without this an order stays DISPUTED forever: the escrow
+   * never releases and the seller is never paid.
+   *
+   * 'release' puts the order back on the delivered path so the money goes to
+   * the seller; 'cancel' ends the order in the buyer's favour — the refund
+   * itself is done in the Pagar.me dashboard, since only a human should decide
+   * to give money back.
+   */
+  async resolveDispute(orderId: string, outcome: 'release' | 'cancel', note?: string): Promise<OrderPublic> {
+    const k = Keys.order(orderId);
+    const order = await this.db.get<OrderRecord>(k.PK, k.SK);
+    if (!order) throw new NotFoundException('Order not found');
+    if (order.status !== 'DISPUTED') throw new BadRequestException(`Order is ${order.status}, not DISPUTED`);
+
+    const now = new Date().toISOString();
+    const status = outcome === 'release' ? 'DELIVERED' : 'CANCELLED';
+    await this.db.update({
+      Key: { PK: k.PK, SK: k.SK },
+      UpdateExpression: 'SET #s = :st, escrowReleaseAt = :now, disputeResolvedAt = :now, disputeResolution = :r, updatedAt = :now',
+      ConditionExpression: '#s = :disputed',
+      ExpressionAttributeNames: { '#s': 'status' },
+      ExpressionAttributeValues: {
+        ':st': status, ':disputed': 'DISPUTED', ':now': now,
+        ':r': `${outcome}${note ? `: ${note.slice(0, 200)}` : ''}`,
+      },
+    });
+    this.logger.log(`Dispute on ${orderId} resolved as ${outcome}`);
+
+    const [buyer, seller] = await Promise.all([
+      this.users.findById(order.buyerId).catch(() => null),
+      this.users.findById(order.sellerId).catch(() => null),
+    ]);
+    const title = outcome === 'release' ? '✅ Disputa resolvida' : '❌ Pedido cancelado';
+    const body = outcome === 'release'
+      ? `A disputa do pedido #${order.orderId.slice(-8).toUpperCase()} foi encerrada e o pagamento será liberado ao vendedor.`
+      : `O pedido #${order.orderId.slice(-8).toUpperCase()} foi cancelado. O reembolso será processado pela equipe.`;
+    void this.notifications.send(buyer?.expoPushToken, title, body, { orderId, screen: 'OrderDetail' });
+    void this.notifications.send(seller?.expoPushToken, title, body, { orderId, screen: 'OrderDetail' });
+
+    return toOrderPublic({ ...order, status, updatedAt: now });
+  }
+
   async runAutoRelease(): Promise<void> {
     const now = new Date().toISOString();
     let released = 0;

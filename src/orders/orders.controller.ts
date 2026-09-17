@@ -58,6 +58,17 @@ export class OrdersController {
     return this.orders.findOne(user.sub, id);
   }
 
+  /** Admin: close a dispute — 'release' pays the seller, 'cancel' ends it for the buyer. */
+  @Post('admin/:id/resolve-dispute')
+  @HttpCode(200)
+  @UseGuards(AdminGuard)
+  resolveDispute(
+    @Param('id') orderId: string,
+    @Body() dto: { outcome: 'release' | 'cancel'; note?: string },
+  ): Promise<OrderPublic> {
+    return this.orders.resolveDispute(orderId, dto.outcome === 'cancel' ? 'cancel' : 'release', dto.note);
+  }
+
   /** Admin: run the escrow release now instead of waiting for the 6-hourly job. */
   @Post('admin/run-auto-release')
   @HttpCode(200)
