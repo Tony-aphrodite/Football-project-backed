@@ -319,8 +319,7 @@ export class ShippingService {
         throw new Error(`Melhor Envio checkout ${checkoutRes.status}: ${body.slice(0, 300)}`);
       }
 
-      // Step 4: Get label print URL
-      // Step 3: Generate the label, then ask for the print link.
+      // Step 3: Generate the label, then Step 4: get the print link.
       await this.generateLabel(cartItem.id);
       const labelUrl = await this.labelLink(cartItem.id);
 
