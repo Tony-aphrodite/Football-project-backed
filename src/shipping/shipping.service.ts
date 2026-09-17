@@ -198,6 +198,24 @@ export class ShippingService {
   }
 
   /**
+   * Turn a paid shipment into an actual printable label. Melhor Envio needs
+   * this between checkout and print — without it the print page just sits on
+   * "estamos gerando suas etiquetas".
+   */
+  async generateLabel(melhorEnvioOrderId: string): Promise<void> {
+    const res = await fetch(`${this.baseUrl}/api/v2/me/shipment/generate`, {
+      method: 'POST',
+      headers: this.headers,
+      body: JSON.stringify({ orders: [melhorEnvioOrderId] }),
+    });
+    if (!res.ok) {
+      const body = await res.text();
+      this.logger.error(`Melhor Envio generate error ${res.status}: ${body}`);
+      throw new Error(`Melhor Envio geração ${res.status}: ${body.slice(0, 300)}`);
+    }
+  }
+
+  /**
    * Printable label link. 'public' opens without a Melhor Envio login — a
    * 'private' link only works for whoever is signed in to Arena's Melhor Envio
    * account, which no seller is. The link is only ever given to the seller.
@@ -301,7 +319,9 @@ export class ShippingService {
         throw new Error(`Melhor Envio checkout ${checkoutRes.status}: ${body.slice(0, 300)}`);
       }
 
-      // Step 3: Get label print URL
+      // Step 4: Get label print URL
+      // Step 3: Generate the label, then ask for the print link.
+      await this.generateLabel(cartItem.id);
       const labelUrl = await this.labelLink(cartItem.id);
 
       const actualCostCents = cartItem.price

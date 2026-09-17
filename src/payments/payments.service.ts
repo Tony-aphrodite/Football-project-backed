@@ -610,6 +610,10 @@ export class PaymentsService {
     const k = Keys.order(orderId);
     const order = await this.db.get<OrderRecord & { correiosTracking?: string }>(k.PK, k.SK);
     if (!order?.melhorEnvioOrderId) throw new NotFoundException('Order has no Melhor Envio label');
+    // Labels bought before the generate step existed are still ungenerated.
+    await this.shipping.generateLabel(order.melhorEnvioOrderId).catch((err) => {
+      this.logger.warn(`Generate for ${orderId} said: ${err instanceof Error ? err.message : err}`);
+    });
     const url = await this.shipping.labelLink(order.melhorEnvioOrderId);
     const undoShipped = order.status === 'SHIPPED' && !order.correiosTracking;
     await this.db.update({
