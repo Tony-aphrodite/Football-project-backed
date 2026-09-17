@@ -148,6 +148,7 @@ export class PaymentsService {
       arenaRecipientId:  split?.arena,
       sellerRecipientId: split?.seller,
       commissionPct: 7,
+      shippingCents:     order.shippingCents ?? 0,
     });
 
     const charge = pagarmeOrder.charges?.[0];
@@ -340,6 +341,7 @@ export class PaymentsService {
       arenaRecipientId:  split?.arena,
       sellerRecipientId: split?.seller,
       commissionPct: 7,
+      shippingCents:     order.shippingCents ?? 0,
     });
 
     const charge = pagarmeOrder.charges?.[0];

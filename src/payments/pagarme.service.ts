@@ -60,6 +60,7 @@ export interface CreatePixOrderParams {
   arenaRecipientId?: string;   // Arena dos Mantos recipient ID
   sellerRecipientId?: string;  // Seller's Pagar.me recipient ID
   commissionPct?: number;      // Arena commission % (default 7)
+  shippingCents?: number;      // part of amountCents that is shipping — goes to Arena
 }
 
 export interface CreateCardOrderParams {
@@ -86,6 +87,7 @@ export interface CreateCardOrderParams {
   arenaRecipientId?:  string;
   sellerRecipientId?: string;
   commissionPct?:     number;
+  shippingCents?:     number;   // part of amountCents that is shipping — goes to Arena
 }
 
 // ── Service ──────────────────────────────────────────────────────────────────
@@ -171,6 +173,7 @@ export class PagarmeService {
               params.arenaRecipientId,
               params.sellerRecipientId,
               params.commissionPct ?? 7,
+              params.shippingCents ?? 0,
             ),
           } : {}),
         },
@@ -246,6 +249,7 @@ export class PagarmeService {
               params.arenaRecipientId,
               params.sellerRecipientId,
               params.commissionPct ?? 7,
+              params.shippingCents ?? 0,
             ),
           } : {}),
         },
@@ -255,14 +259,24 @@ export class PagarmeService {
 
   /** Build split rules: Arena gets commission %, seller gets remainder.
    *  Pagar.me processing fee (4%) is charged to Arena's share. */
-  private buildSplit(
+  /**
+   * Arena receives its commission on the jersey plus the whole shipping
+   * amount — Arena pays the Correios label from its Melhor Envio wallet, so the
+   * shipping money has to land with Arena, not with the seller. The seller
+   * receives the jersey price minus the commission.
+   */
+  buildSplit(
     amountCents:       number,
     arenaRecipientId:  string,
     sellerRecipientId: string,
     commissionPct:     number,
+    shippingCents = 0,
   ) {
-    const arenaAmount  = Math.round(amountCents * (commissionPct / 100));
-    const sellerAmount = amountCents - arenaAmount;
+    const shipping     = Math.min(Math.max(shippingCents, 0), amountCents);
+    const itemCents    = amountCents - shipping;
+    const commission   = Math.round(itemCents * (commissionPct / 100));
+    const arenaAmount  = commission + shipping;
+    const sellerAmount = itemCents - commission;
 
     return [
       {
