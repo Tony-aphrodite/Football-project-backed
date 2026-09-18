@@ -398,7 +398,7 @@ export class PaymentsService {
     };
 
     if (isPaid) {
-      const escrowReleaseAt = new Date(Date.now() + 30 * 24 * 3_600_000).toISOString() /* fallback: released 7 days after delivery (OrdersService) */;
+      const escrowReleaseAt = new Date(Date.now() + 30 * 24 * 3_600_000).toISOString() /* delivery deadline, not a release date — see OrdersService.flagUndelivered */;
       updateExpressionParts.push('#s = :paid', 'escrowReleaseAt = :era');
       expressionValues[':paid'] = 'PAID';
       expressionValues[':era']  = escrowReleaseAt;
@@ -784,7 +784,7 @@ export class PaymentsService {
 
     const now = new Date().toISOString();
     // Escrow auto-releases 7 days after payment
-    const escrowReleaseAt = new Date(Date.now() + 30 * 24 * 3_600_000).toISOString() /* fallback: released 7 days after delivery (OrdersService) */;
+    const escrowReleaseAt = new Date(Date.now() + 30 * 24 * 3_600_000).toISOString() /* delivery deadline, not a release date — see OrdersService.flagUndelivered */;
 
     await this.db.update({
       Key: { PK: orderKey.PK, SK: orderKey.SK },

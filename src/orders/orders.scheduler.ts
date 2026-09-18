@@ -21,5 +21,10 @@ export class OrdersScheduler {
   async handleAutoRelease(): Promise<void> {
     this.logger.log('Running escrow auto-release check');
     await this.orders.runAutoRelease();
+    try {
+      await this.orders.flagUndelivered();
+    } catch (err) {
+      this.logger.error('Undelivered order check failed', err);
+    }
   }
 }

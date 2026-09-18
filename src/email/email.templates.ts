@@ -324,11 +324,13 @@ export function orderCompletedBuyerEmail(d: OrderEmailData): EmailContent {
 }
 
 /** Seller: buyer opened a dispute — time-sensitive. */
-export function disputeOpenedSellerEmail(d: OrderEmailData, reason: string): EmailContent {
+export function disputeOpenedSellerEmail(d: OrderEmailData, reason: string, bySystem = false): EmailContent {
   return {
     subject: `⚠️ Problema reportado — pedido #${shortId(d.orderId)}`,
     html: layout('Um problema foi reportado', `
-      ${p(`O comprador abriu uma disputa no pedido <strong>#${esc(shortId(d.orderId))}</strong>.`)}
+      ${p(bySystem
+        ? `A entrega do pedido <strong>#${esc(shortId(d.orderId))}</strong> não foi registrada em 30 dias, então o pedido foi encaminhado para análise.`
+        : `O comprador abriu uma disputa no pedido <strong>#${esc(shortId(d.orderId))}</strong>.`)}
       ${details([
         ['Camisa',    `${d.teamName}${d.season ? ` · ${d.season}` : ''}`],
         ['Comprador', d.buyerName],
@@ -340,23 +342,29 @@ export function disputeOpenedSellerEmail(d: OrderEmailData, reason: string): Ema
           <strong>O pagamento ficou retido</strong> até a resolução. Nossa equipe entrará em contato em breve.
         </td></tr>
       </table>
-      ${p(`Envie para <a href="mailto:${CONTATO}" style="color:${TEXTO};font-weight:700">${CONTATO}</a> qualquer informação que ajude a resolver — comprovante de postagem, fotos do envio, conversas com o comprador.`)}
+      ${p(`Em até <strong>3 dias</strong>, envie para <a href="mailto:${CONTATO}" style="color:${TEXTO};font-weight:700">${CONTATO}</a> o que ajude a resolver — comprovante de postagem dos Correios, fotos da camisa e da embalagem.`)}
     `),
   };
 }
 
 /** Buyer: their dispute was received — what happens next and what to send. */
-export function disputeOpenedBuyerEmail(d: OrderEmailData, reason: string): EmailContent {
+export function disputeOpenedBuyerEmail(d: OrderEmailData, reason: string, bySystem = false): EmailContent {
   return {
-    subject: `Recebemos sua disputa — pedido #${shortId(d.orderId)}`,
-    html: layout('Recebemos sua disputa', `
-      ${p(`Sua disputa no pedido <strong>#${esc(shortId(d.orderId))}</strong> foi aberta e o pagamento ao vendedor está <strong>retido</strong> até a resolução.`)}
+    subject: bySystem
+      ? `Sua camisa chegou? — pedido #${shortId(d.orderId)}`
+      : `Recebemos sua disputa — pedido #${shortId(d.orderId)}`,
+    html: layout(bySystem ? 'Não registramos a entrega' : 'Recebemos sua disputa', `
+      ${p(bySystem
+        ? `A entrega do pedido <strong>#${esc(shortId(d.orderId))}</strong> não foi registrada em 30 dias. O pagamento ao vendedor está <strong>retido</strong> e nossa equipe vai analisar o caso.`
+        : `Sua disputa no pedido <strong>#${esc(shortId(d.orderId))}</strong> foi aberta e o pagamento ao vendedor está <strong>retido</strong> até a resolução.`)}
       ${details([
         ['Camisa', `${d.teamName}${d.season ? ` · ${d.season}` : ''}`],
         ['Vendedor', d.sellerName],
         ['Motivo', reason],
       ])}
-      ${p(`<strong>Próximo passo:</strong> em até <strong>3 dias</strong>, envie para <a href="mailto:${CONTATO}" style="color:${TEXTO};font-weight:700">${CONTATO}</a> fotos da camisa, da etiqueta e da embalagem recebida. Sem evidências não é possível decidir a seu favor.`)}
+      ${p(bySystem
+        ? `<strong>Se a camisa chegou</strong>, responda para <a href="mailto:${CONTATO}" style="color:${TEXTO};font-weight:700">${CONTATO}</a> avisando. <strong>Se não chegou</strong>, avise também — vamos verificar com os Correios.`
+        : `<strong>Próximo passo:</strong> em até <strong>3 dias</strong>, envie para <a href="mailto:${CONTATO}" style="color:${TEXTO};font-weight:700">${CONTATO}</a> fotos da camisa, da etiqueta e da embalagem recebida. Sem evidências não é possível decidir a seu favor.`)}
       ${p(`<span style="color:${SUAVE};font-size:13px">Nossa equipe analisa o caso com as informações das duas partes e responde em até 48 horas.</span>`)}
     `),
   };
@@ -367,7 +375,7 @@ export function disputeOpenedAdminEmail(d: OrderEmailData, reason: string, buyer
   return {
     subject: `🚨 Nova disputa — pedido #${shortId(d.orderId)}`,
     html: layout('Nova disputa aberta', `
-      ${p('Um comprador abriu uma disputa. O pagamento está retido até a decisão.')}
+      ${p('Uma disputa foi aberta (veja o motivo abaixo). O pagamento está retido até a decisão.')}
       ${details([
         ['Pedido', `#${shortId(d.orderId)}`],
         ['ID completo', d.orderId],
@@ -378,6 +386,18 @@ export function disputeOpenedAdminEmail(d: OrderEmailData, reason: string, buyer
         ['Motivo', reason],
       ])}
       ${p('As duas partes foram avisadas e orientadas a enviar evidências para este e-mail em até 3 dias.')}
+    `),
+  };
+}
+
+/** Buyer: 15 days after posting with no registered delivery. */
+export function deliveryReminderBuyerEmail(d: OrderEmailData): EmailContent {
+  return {
+    subject: `📦 Sua camisa já chegou? — pedido #${shortId(d.orderId)}`,
+    html: layout('Sua camisa já chegou?', `
+      ${p(`Ainda não registramos a entrega de <strong>${esc(d.teamName)}</strong> (pedido #${esc(shortId(d.orderId))}).`)}
+      ${p('<strong>Se já chegou</strong>, abra o app em <strong>Meus pedidos</strong> e toque em <strong>Confirmar recebimento</strong>.')}
+      ${p('<strong>Se não chegou</strong>, toque em <strong>Tive um problema com este pedido</strong> — o pagamento ao vendedor continua retido até resolvermos.')}
     `),
   };
 }
