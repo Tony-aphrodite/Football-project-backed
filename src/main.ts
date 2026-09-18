@@ -16,8 +16,15 @@ async function bootstrap(): Promise<void> {
   app.use(helmet());
 
   const corsOrigins = config.get('cors.origins', { infer: true });
+  // The admin website is a separate site (Vercel), so browsers need it allowed
+  // here. CORS is not what protects the admin routes — every one of them still
+  // needs the x-admin-secret header — it only lets the browser make the call.
+  const adminOrigins: (string | RegExp)[] = [
+    'https://admin.arenadosmantos.app.br',
+    /^https:\/\/arena-admin[a-z0-9-]*\.vercel\.app$/,
+  ];
   app.enableCors({
-    origin: corsOrigins.includes('*') ? true : corsOrigins,
+    origin: corsOrigins.includes('*') ? true : [...corsOrigins.filter(Boolean), ...adminOrigins],
     credentials: true,
   });
 
