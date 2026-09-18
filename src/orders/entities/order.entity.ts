@@ -58,6 +58,7 @@ export interface OrderRecord {
   disputedAt?:      string;
   disputeReason?:   string;
   correiosTracking?: string;
+  deliveredAt?:             string;
   disputeResolvedAt?:       string;
   disputeResolution?:       string;
   melhorEnvioOrderId?:      string;

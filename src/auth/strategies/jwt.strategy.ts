@@ -20,15 +20,30 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     });
   }
 
+  /** userId → status, re-read at most once a minute. */
+  private readonly statusCache = new Map<string, { status: string; at: number }>();
+
   /**
-   * Passport calls this after verifying the signature and TTL. We keep it light
-   * — checking a denylist or hitting the DB on every request would defeat the
-   * point of stateless JWT. Suspended-account enforcement happens in the
-   * controllers that need it.
+   * Passport calls this after verifying the signature and TTL. A suspended
+   * account is refused here, so a ban takes effect within a minute instead of
+   * lasting until the access token expires — nothing downstream checked it.
+   * The status is cached per user to avoid a database read on every request.
    */
   async validate(payload: JwtPayload): Promise<JwtPayload> {
     if (!payload?.sub) {
       throw new UnauthorizedException('Invalid token payload');
+    }
+
+    const cached = this.statusCache.get(payload.sub);
+    let status = cached && Date.now() - cached.at < 60_000 ? cached.status : undefined;
+    if (!status) {
+      const user = await this.users.findById(payload.sub).catch(() => undefined);
+      // An unreadable status (DB hiccup) must not lock everyone out.
+      status = user?.status ?? 'ACTIVE';
+      this.statusCache.set(payload.sub, { status, at: Date.now() });
+    }
+    if (status !== 'ACTIVE') {
+      throw new UnauthorizedException(`Account is ${status.toLowerCase()}`);
     }
     return payload;
   }

@@ -132,7 +132,7 @@ export function welcomeEmail(name: string): EmailContent {
         <li>Anunciar as suas camisas e vender com pagamento protegido</li>
         <li>Avaliar e ser avaliado, construindo sua reputação na Arena</li>
       </ul>
-      ${p(`Todo pagamento fica retido até o comprador confirmar o recebimento — segurança para os dois lados.`)}
+      ${p(`Todo pagamento fica retido até 7 dias após a entrega — segurança para os dois lados.`)}
       ${p(`<span style="color:${SUAVE};font-size:13px">Dúvidas? Escreva para <a href="mailto:${CONTATO}" style="color:${SUAVE}">${CONTATO}</a>.</span>`)}
     `),
   };
@@ -223,7 +223,7 @@ export function orderPaidSellerEmail(d: OrderEmailData): EmailContent {
         ['Pedido',  `#${shortId(d.orderId)}`],
       ])}
       ${p('<strong>Próximo passo:</strong> prepare a camisa para envio. A etiqueta de postagem é gerada automaticamente e chega para você por e-mail em instantes.')}
-      ${p(`<span style="color:${SUAVE};font-size:13px">O valor fica retido com segurança e é liberado para saque após a confirmação de entrega.</span>`)}
+      ${p(`<span style="color:${SUAVE};font-size:13px">O valor fica retido com segurança e é liberado para saque 7 dias após a entrega, se não houver disputa.</span>`)}
     `),
   };
 }
@@ -240,7 +240,7 @@ export function shippingLabelEmail(d: OrderEmailData): EmailContent {
         ...(d.tracking ? [['Rastreio', d.tracking] as [string, string]] : []),
       ])}
       ${d.labelUrl ? button('Baixar etiqueta (PDF)', d.labelUrl) : p('<strong>A etiqueta está disponível no app, na tela do pedido.</strong>')}
-      ${p(`<span style="color:${SUAVE};font-size:13px">Poste o quanto antes: o comprador acompanha o rastreio e o pagamento é liberado após a entrega.</span>`)}
+      ${p(`<span style="color:${SUAVE};font-size:13px">Poste o quanto antes: o comprador acompanha o rastreio e o pagamento é liberado 7 dias após a entrega.</span>`)}
     `),
   };
 }
@@ -259,7 +259,7 @@ export function orderShippedBuyerEmail(d: OrderEmailData): EmailContent {
       ${d.tracking
         ? button('Rastrear nos Correios', `https://rastreamento.correios.com.br/app/index.php?objeto=${encodeURIComponent(d.tracking)}`)
         : ''}
-      ${p('Assim que receber, <strong>confirme o recebimento no app</strong> — é isso que libera o pagamento para o vendedor.')}
+      ${p('Assim que receber, <strong>confirme o recebimento no app</strong>. Você tem <strong>7 dias após a entrega</strong> para relatar qualquer problema; depois disso o pagamento é liberado ao vendedor.')}
     `),
   };
 }
@@ -275,7 +275,7 @@ export function deliveryConfirmedSellerEmail(d: OrderEmailData): EmailContent {
         ['Valor',  brl(d.priceCents)],
         ['Pedido', `#${shortId(d.orderId)}`],
       ])}
-      ${p('O pagamento está sendo processado e será liberado para saque em instantes.')}
+      ${p('O pagamento será liberado para saque em <strong>7 dias</strong>, prazo em que o comprador ainda pode relatar algum problema.')}
       ${p('Que tal <strong>avaliar o comprador</strong>? Avaliações constroem a confiança da comunidade.')}
     `),
   };
@@ -341,6 +341,55 @@ export function disputeOpenedSellerEmail(d: OrderEmailData, reason: string): Ema
         </td></tr>
       </table>
       ${p(`Envie para <a href="mailto:${CONTATO}" style="color:${TEXTO};font-weight:700">${CONTATO}</a> qualquer informação que ajude a resolver — comprovante de postagem, fotos do envio, conversas com o comprador.`)}
+    `),
+  };
+}
+
+/** Buyer: their dispute was received — what happens next and what to send. */
+export function disputeOpenedBuyerEmail(d: OrderEmailData, reason: string): EmailContent {
+  return {
+    subject: `Recebemos sua disputa — pedido #${shortId(d.orderId)}`,
+    html: layout('Recebemos sua disputa', `
+      ${p(`Sua disputa no pedido <strong>#${esc(shortId(d.orderId))}</strong> foi aberta e o pagamento ao vendedor está <strong>retido</strong> até a resolução.`)}
+      ${details([
+        ['Camisa', `${d.teamName}${d.season ? ` · ${d.season}` : ''}`],
+        ['Vendedor', d.sellerName],
+        ['Motivo', reason],
+      ])}
+      ${p(`<strong>Próximo passo:</strong> em até <strong>3 dias</strong>, envie para <a href="mailto:${CONTATO}" style="color:${TEXTO};font-weight:700">${CONTATO}</a> fotos da camisa, da etiqueta e da embalagem recebida. Sem evidências não é possível decidir a seu favor.`)}
+      ${p(`<span style="color:${SUAVE};font-size:13px">Nossa equipe analisa o caso com as informações das duas partes e responde em até 48 horas.</span>`)}
+    `),
+  };
+}
+
+/** Internal: tells Arena a dispute needs mediation. */
+export function disputeOpenedAdminEmail(d: OrderEmailData, reason: string, buyerEmail?: string, sellerEmail?: string): EmailContent {
+  return {
+    subject: `🚨 Nova disputa — pedido #${shortId(d.orderId)}`,
+    html: layout('Nova disputa aberta', `
+      ${p('Um comprador abriu uma disputa. O pagamento está retido até a decisão.')}
+      ${details([
+        ['Pedido', `#${shortId(d.orderId)}`],
+        ['ID completo', d.orderId],
+        ['Camisa', `${d.teamName}${d.season ? ` · ${d.season}` : ''}`],
+        ['Valor', brl(d.totalCents ?? d.priceCents)],
+        ['Comprador', `${d.buyerName}${buyerEmail ? ` · ${buyerEmail}` : ''}`],
+        ['Vendedor', `${d.sellerName}${sellerEmail ? ` · ${sellerEmail}` : ''}`],
+        ['Motivo', reason],
+      ])}
+      ${p('As duas partes foram avisadas e orientadas a enviar evidências para este e-mail em até 3 dias.')}
+    `),
+  };
+}
+
+/** Buyer: the carrier reports the jersey delivered — the 7-day window starts. */
+export function orderDeliveredBuyerEmail(d: OrderEmailData): EmailContent {
+  return {
+    subject: `📬 Sua camisa foi entregue — pedido #${shortId(d.orderId)}`,
+    html: layout('Sua camisa chegou!', `
+      ${p(`Os Correios registraram a entrega de <strong>${esc(d.teamName)}</strong>.`)}
+      ${p('Confira a camisa com calma. Você tem <strong>7 dias</strong> para relatar qualquer problema pelo app (em <strong>Meus pedidos</strong> → <strong>Tive um problema com este pedido</strong>). Depois desse prazo, o pagamento é liberado ao vendedor.')}
+      ${p(`<span style="color:${SUAVE};font-size:13px">Se você se arrependeu da compra, escreva para <a href="mailto:${CONTATO}" style="color:${SUAVE}">${CONTATO}</a> dentro desse prazo para iniciar a devolução.</span>`)}
     `),
   };
 }

@@ -21,12 +21,27 @@ import { EmailService } from '../email/email.service';
 import {
   deliveryConfirmedSellerEmail,
   disputeOpenedSellerEmail,
+  disputeOpenedBuyerEmail,
+  disputeOpenedAdminEmail,
+  orderDeliveredBuyerEmail,
   orderCompletedBuyerEmail,
   orderShippedBuyerEmail,
   paymentReleasedSellerEmail,
   rateReminderEmail,
   type OrderEmailData,
 } from '../email/email.templates';
+
+/**
+ * When the seller gets paid. The buyer has 7 days after delivery to report a
+ * problem (or regret the purchase), so the money waits for that window. If
+ * delivery is never registered — no confirmation and no carrier update — the
+ * order still releases 30 days after posting instead of hanging forever.
+ */
+const DAY_MS = 24 * 3_600_000;
+/** Where Arena is told about things that need a human (disputes). */
+const ADMIN_ALERT_EMAIL = process.env.ADMIN_ALERT_EMAIL ?? 'contato@arenadosmantos.app.br';
+const RELEASE_AFTER_DELIVERY_MS = 7 * DAY_MS;
+const RELEASE_AFTER_SHIPPING_MS = 30 * DAY_MS;
 
 @Injectable()
 export class OrdersService {
@@ -265,26 +280,61 @@ export class OrdersService {
    * confirm by hand (addTracking), whichever happens first.
    */
   async syncCarrierStatus(): Promise<void> {
-    const paid = await this.db.scanAll<OrderRecord>({
-      FilterExpression: 'entityType = :o AND #s = :paid AND attribute_exists(melhorEnvioOrderId)',
+    const open = await this.db.scanAll<OrderRecord>({
+      FilterExpression: 'entityType = :o AND #s IN (:paid, :shipped) AND attribute_exists(melhorEnvioOrderId)',
       ExpressionAttributeNames: { '#s': 'status' },
-      ExpressionAttributeValues: { ':o': 'Order', ':paid': 'PAID' },
+      ExpressionAttributeValues: { ':o': 'Order', ':paid': 'PAID', ':shipped': 'SHIPPED' },
     });
-    if (paid.length === 0) return;
+    if (open.length === 0) return;
 
-    const statuses = await this.shipping.trackingStatus(paid.map((o) => o.melhorEnvioOrderId!));
-    for (const order of paid) {
+    const statuses = await this.shipping.trackingStatus(open.map((o) => o.melhorEnvioOrderId!));
+    for (const order of open) {
       const s = statuses[order.melhorEnvioOrderId!]?.status;
       if (s !== 'posted' && s !== 'delivered') continue;
-      const code = order.shippingTrackingCode ?? statuses[order.melhorEnvioOrderId!]?.tracking;
-      if (!code) continue;
       try {
-        await this.addTracking(order.sellerId, order.orderId, code);
-        this.logger.log(`Order ${order.orderId} posted per Melhor Envio (${s}) — marked SHIPPED`);
+        if (order.status === 'PAID') {
+          const code = order.shippingTrackingCode ?? statuses[order.melhorEnvioOrderId!]?.tracking;
+          if (code) await this.addTracking(order.sellerId, order.orderId, code);
+          else await this.markShipped(order.sellerId, order.orderId);
+          this.logger.log(`Order ${order.orderId} posted per Melhor Envio — marked SHIPPED`);
+        }
+        if (s === 'delivered') await this.markDeliveredByCarrier(order.orderId);
       } catch (err) {
-        this.logger.warn(`Could not mark ${order.orderId} shipped from carrier status`, err);
+        this.logger.warn(`Could not apply carrier status '${s}' to ${order.orderId}`, err);
       }
     }
+  }
+
+  /** The Correios registered the delivery: the buyer's 7-day window starts now. */
+  private async markDeliveredByCarrier(orderId: string): Promise<void> {
+    const k = Keys.order(orderId);
+    const now = new Date().toISOString();
+    try {
+      await this.db.update({
+        Key: { PK: k.PK, SK: k.SK },
+        UpdateExpression: 'SET #s = :delivered, deliveredAt = :now, escrowReleaseAt = :era, updatedAt = :now',
+        ConditionExpression: '#s = :shipped',
+        ExpressionAttributeNames: { '#s': 'status' },
+        ExpressionAttributeValues: {
+          ':delivered': 'DELIVERED', ':shipped': 'SHIPPED', ':now': now,
+          ':era': new Date(Date.now() + RELEASE_AFTER_DELIVERY_MS).toISOString(),
+        },
+      });
+    } catch {
+      return; // already delivered, disputed or confirmed by the buyer
+    }
+    const order = await this.db.get<OrderRecord>(k.PK, k.SK);
+    if (!order) return;
+    const buyer = await this.users.findById(order.buyerId).catch(() => null);
+    void this.notifications.send(
+      buyer?.expoPushToken,
+      '📬 Sua camisa foi entregue!',
+      `Confira ${order.teamName}. Você tem 7 dias para relatar qualquer problema.`,
+      { orderId, screen: 'OrderDetail' },
+    );
+    const mail = orderDeliveredBuyerEmail(this.emailData(order));
+    void this.email.send(buyer?.email, mail.subject, mail.html);
+    this.logger.log(`Order ${orderId} delivered per Melhor Envio — releases in 7 days`);
   }
 
   async findOne(userId: string, orderId: string): Promise<OrderPublic> {
@@ -309,9 +359,13 @@ export class OrdersService {
     const now = new Date().toISOString();
     await this.db.update({
       Key:                       { PK: k.PK, SK: k.SK },
-      UpdateExpression:          'SET #s = :delivered, escrowReleaseAt = :now, updatedAt = :now',
+      UpdateExpression:          'SET #s = :delivered, deliveredAt = :now, escrowReleaseAt = :era, updatedAt = :now',
       ExpressionAttributeNames:  { '#s': 'status' },
-      ExpressionAttributeValues: { ':delivered': 'DELIVERED', ':now': now },
+      ExpressionAttributeValues: {
+        ':delivered': 'DELIVERED',
+        ':now':       now,
+        ':era':       new Date(Date.now() + RELEASE_AFTER_DELIVERY_MS).toISOString(),
+      },
     });
 
     // Notify seller that buyer confirmed
@@ -319,7 +373,7 @@ export class OrdersService {
     void this.notifications.send(
       seller?.expoPushToken,
       '✅ Recebimento confirmado!',
-      `${order.buyerName} confirmou o recebimento de ${order.teamName}. Pagamento sendo processado.`,
+      `${order.buyerName} confirmou o recebimento de ${order.teamName}. O pagamento é liberado em 7 dias.`,
       { orderId: order.orderId, screen: 'OrderDetail' },
     );
     const confirmedMail = deliveryConfirmedSellerEmail(this.emailData(order));
@@ -356,7 +410,7 @@ export class OrdersService {
       ExpressionAttributeValues: {
         ':shipped': 'SHIPPED',
         ':paid':    'PAID',
-        ':era':     new Date(Date.now() + 7 * 24 * 3_600_000).toISOString(),
+        ':era':     new Date(Date.now() + RELEASE_AFTER_SHIPPING_MS).toISOString(),
         ':now':     now,
       },
     });
@@ -384,8 +438,9 @@ export class OrdersService {
     }
 
     const now = new Date().toISOString();
-    // Reset escrow window to 7 days from actual ship date (seller may ship days after payment)
-    const escrowReleaseAt = new Date(Date.now() + 7 * 24 * 3_600_000).toISOString();
+    // Released 7 days after delivery; this is only the fallback for a delivery
+    // that is never registered.
+    const escrowReleaseAt = new Date(Date.now() + RELEASE_AFTER_SHIPPING_MS).toISOString();
     await this.db.update({
       Key:                       { PK: k.PK, SK: k.SK },
       UpdateExpression:          'SET correiosTracking = :tracking, #s = :shipped, escrowReleaseAt = :era, updatedAt = :now',
@@ -423,7 +478,12 @@ export class OrdersService {
     if (!order) throw new NotFoundException('Order not found');
     if (order.buyerId !== buyerId) throw new ForbiddenException('Not your order');
     if (!['PAID', 'SHIPPED', 'DELIVERED'].includes(order.status)) {
-      throw new BadRequestException('Dispute cannot be opened in the current order status');
+      throw new BadRequestException('Não é possível abrir uma disputa neste pedido.');
+    }
+    // The window is the 7 days after delivery; once the money is due to the
+    // seller, it is too late.
+    if (order.status === 'DELIVERED' && order.escrowReleaseAt && new Date(order.escrowReleaseAt) <= new Date()) {
+      throw new BadRequestException('O prazo de 7 dias após a entrega para relatar um problema terminou.');
     }
 
     const now = new Date().toISOString();
@@ -448,6 +508,14 @@ export class OrdersService {
     );
     const disputeMail = disputeOpenedSellerEmail(this.emailData(order), reason);
     void this.email.send(seller?.email, disputeMail.subject, disputeMail.html);
+
+    // The buyer gets a receipt with what to send, and Arena gets the alert —
+    // before, only the seller was told anything.
+    const buyer = await this.users.findById(order.buyerId).catch(() => null);
+    const buyerMail = disputeOpenedBuyerEmail(this.emailData(order), reason);
+    void this.email.send(buyer?.email, buyerMail.subject, buyerMail.html);
+    const adminMail = disputeOpenedAdminEmail(this.emailData(order), reason, buyer?.email, seller?.email);
+    void this.email.send(ADMIN_ALERT_EMAIL, adminMail.subject, adminMail.html);
   }
 
   /**
@@ -497,11 +565,14 @@ export class OrdersService {
     const now = new Date().toISOString();
     let released = 0;
 
-    const candidates = await this.db.scan<OrderRecord>({
-      FilterExpression:          '#s IN (:paid, :shipped, :delivered) AND escrowReleaseAt <= :now',
+    // scanAll + entityType: a single scan page silently misses orders once the
+    // table grows. A Correios order that was never posted is never released —
+    // the seller has not shipped anything; hand delivery keeps a fallback.
+    const candidates = (await this.db.scanAll<OrderRecord>({
+      FilterExpression:          'entityType = :o AND #s IN (:paid, :shipped, :delivered) AND escrowReleaseAt <= :now',
       ExpressionAttributeNames:  { '#s': 'status' },
-      ExpressionAttributeValues: { ':paid': 'PAID', ':shipped': 'SHIPPED', ':delivered': 'DELIVERED', ':now': now },
-    });
+      ExpressionAttributeValues: { ':o': 'Order', ':paid': 'PAID', ':shipped': 'SHIPPED', ':delivered': 'DELIVERED', ':now': now },
+    })).filter((o) => o.status !== 'PAID' || o.deliveryMethod === 'ENTREGA_EM_MAOS');
 
     for (const order of candidates) {
       try {

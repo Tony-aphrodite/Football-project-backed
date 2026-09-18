@@ -17,7 +17,7 @@ export class OrdersScheduler {
     }
   }
 
-  @Cron(CronExpression.EVERY_6_HOURS)
+  @Cron(CronExpression.EVERY_HOUR)
   async handleAutoRelease(): Promise<void> {
     this.logger.log('Running escrow auto-release check');
     await this.orders.runAutoRelease();
