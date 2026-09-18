@@ -98,6 +98,10 @@ export class PaymentsService {
       buyerName:  order.buyerName,
       sellerName: order.sellerName,
       tracking:   order.correiosTracking,
+      deliveryMethod: order.deliveryMethod,
+      photoUrl:   order.photoKeys?.[0] && process.env.R2_PUBLIC_URL
+        ? `${process.env.R2_PUBLIC_URL.replace(/\/$/, '')}/${order.photoKeys[0]}`
+        : undefined,
     };
   }
 
@@ -823,6 +827,14 @@ export class PaymentsService {
     // Buyer confirmation: a receipt, and the fastest way for an account owner
     // to spot a purchase they did not make.
     const buyer = await this.users.findById(order.buyerId).catch(() => null);
+    void this.notifications.send(
+      buyer?.expoPushToken,
+      '✅ Compra confirmada!',
+      order.deliveryMethod === 'ENTREGA_EM_MAOS'
+        ? `Pagamento aprovado. Combine a entrega em mãos de ${order.teamName} com o vendedor.`
+        : `Pagamento aprovado. O vendedor vai preparar o envio de ${order.teamName}.`,
+      { orderId: order.orderId, screen: 'OrderDetail' },
+    );
     const buyerMail = orderPaidBuyerEmail(this.emailData(order));
     void this.email.send(buyer?.email, buyerMail.subject, buyerMail.html);
   }

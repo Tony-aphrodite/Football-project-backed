@@ -284,7 +284,10 @@ export class PagarmeService {
         amount: arenaAmount,
         type: 'flat',
         options: {
-          charge_processing_fee: true,  // Pagar.me fee comes from Arena's share
+          // The seller pays the payment fee (Terms §9: 7% commission plus up
+          // to 4% for the payment method); Arena's 7% stays whole. Arena
+          // remains liable for chargebacks.
+          charge_processing_fee: false,
           liable:                true,
           charge_remainder_fee:  true,
         },
@@ -294,7 +297,7 @@ export class PagarmeService {
         amount: sellerAmount,
         type: 'flat',
         options: {
-          charge_processing_fee: false,
+          charge_processing_fee: true,
           liable:                false,
           charge_remainder_fee:  false,
         },

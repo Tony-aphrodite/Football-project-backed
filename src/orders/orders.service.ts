@@ -71,6 +71,10 @@ export class OrdersService {
       buyerName:  order.buyerName,
       sellerName: order.sellerName,
       tracking:   order.correiosTracking,
+      deliveryMethod: order.deliveryMethod,
+      photoUrl:   order.photoKeys?.[0] && process.env.R2_PUBLIC_URL
+        ? `${process.env.R2_PUBLIC_URL.replace(/\/$/, '')}/${order.photoKeys[0]}`
+        : undefined,
     };
   }
 

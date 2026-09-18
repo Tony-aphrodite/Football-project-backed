@@ -116,6 +116,20 @@ export interface OrderEmailData {
   sellerName: string;
   tracking?:  string;
   labelUrl?:  string;
+  deliveryMethod?: 'CORREIOS' | 'ENTREGA_EM_MAOS';
+  photoUrl?:  string;   // first listing photo, public R2 URL
+}
+
+/** The jersey's photo at the top of order e-mails — people recognise it faster than a name. */
+function jerseyPhoto(d: OrderEmailData): string {
+  if (!d.photoUrl) return '';
+  return `
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:4px 0 8px">
+      <tr><td align="center">
+        <img src="${esc(d.photoUrl)}" width="200" alt="${esc(d.teamName)}"
+             style="display:block;width:200px;max-width:100%;height:auto;border-radius:12px;border:1px solid #E5DCC4" />
+      </td></tr>
+    </table>`;
 }
 
 // ── Account ───────────────────────────────────────────────────────────────────
@@ -216,13 +230,16 @@ export function orderPaidSellerEmail(d: OrderEmailData): EmailContent {
     subject: `🛒 Nova venda! ${d.teamName} — pedido #${shortId(d.orderId)}`,
     html: layout('Você vendeu uma camisa!', `
       ${p(`<strong>${esc(d.buyerName)}</strong> comprou sua camisa e o pagamento já foi confirmado.`)}
+      ${jerseyPhoto(d)}
       ${details([
         ['Camisa',  `${d.teamName}${d.season ? ` · ${d.season}` : ''}`],
         ['Valor',   brl(d.priceCents)],
         ['Comprador', d.buyerName],
         ['Pedido',  `#${shortId(d.orderId)}`],
       ])}
-      ${p('<strong>Próximo passo:</strong> prepare a camisa para envio. A etiqueta de postagem é gerada automaticamente e chega para você por e-mail em instantes.')}
+      ${p(d.deliveryMethod === 'ENTREGA_EM_MAOS'
+        ? '<strong>Próximo passo:</strong> combine com o comprador o local e o horário da <strong>entrega em mãos</strong>. Na entrega, peça para ele confirmar o recebimento no app.'
+        : '<strong>Próximo passo:</strong> prepare a camisa para envio. A etiqueta de postagem é gerada automaticamente e chega para você por e-mail em instantes.')}
       ${p(`<span style="color:${SUAVE};font-size:13px">O valor fica retido com segurança e é liberado para saque 7 dias após a entrega, se não houver disputa.</span>`)}
     `),
   };
@@ -234,6 +251,7 @@ export function shippingLabelEmail(d: OrderEmailData): EmailContent {
     subject: `📮 Etiqueta de envio — pedido #${shortId(d.orderId)}`,
     html: layout('Sua etiqueta de envio está pronta', `
       ${p(`A etiqueta dos Correios do pedido <strong>#${esc(shortId(d.orderId))}</strong> foi gerada. Imprima, cole na embalagem e poste a camisa.`)}
+      ${jerseyPhoto(d)}
       ${details([
         ['Camisa',      `${d.teamName}${d.season ? ` · ${d.season}` : ''}`],
         ['Comprador',   d.buyerName],
@@ -251,6 +269,7 @@ export function orderShippedBuyerEmail(d: OrderEmailData): EmailContent {
     subject: `📦 Seu pedido foi enviado — ${d.teamName}`,
     html: layout('Sua camisa está a caminho!', `
       ${p(`<strong>${esc(d.sellerName)}</strong> postou sua camisa.`)}
+      ${jerseyPhoto(d)}
       ${details([
         ['Camisa',  `${d.teamName}${d.season ? ` · ${d.season}` : ''}`],
         ['Pedido',  `#${shortId(d.orderId)}`],
@@ -270,6 +289,7 @@ export function deliveryConfirmedSellerEmail(d: OrderEmailData): EmailContent {
     subject: `✅ Recebimento confirmado — pedido #${shortId(d.orderId)}`,
     html: layout('Entrega confirmada!', `
       ${p(`<strong>${esc(d.buyerName)}</strong> confirmou o recebimento de <strong>${esc(d.teamName)}</strong>.`)}
+      ${jerseyPhoto(d)}
       ${details([
         ['Camisa', `${d.teamName}${d.season ? ` · ${d.season}` : ''}`],
         ['Valor',  brl(d.priceCents)],
@@ -299,6 +319,7 @@ export function paymentReleasedSellerEmail(d: OrderEmailData): EmailContent {
     subject: `💰 Pagamento liberado — pedido #${shortId(d.orderId)}`,
     html: layout('Seu pagamento foi liberado!', `
       ${p(`O valor do pedido <strong>#${esc(shortId(d.orderId))}</strong> está disponível para saque.`)}
+      ${jerseyPhoto(d)}
       ${details([
         ['Camisa', `${d.teamName}${d.season ? ` · ${d.season}` : ''}`],
         ['Valor',  brl(d.priceCents)],
@@ -314,6 +335,7 @@ export function orderCompletedBuyerEmail(d: OrderEmailData): EmailContent {
     subject: `✅ Pedido concluído — ${d.teamName}`,
     html: layout('Pedido concluído', `
       ${p(`Seu pedido de <strong>${esc(d.teamName)}</strong> foi concluído com sucesso. Esperamos que a camisa seja tudo o que você esperava!`)}
+      ${jerseyPhoto(d)}
       ${details([
         ['Pedido', `#${shortId(d.orderId)}`],
         ['Valor',  brl(d.priceCents)],
@@ -331,6 +353,7 @@ export function disputeOpenedSellerEmail(d: OrderEmailData, reason: string, bySy
       ${p(bySystem
         ? `A entrega do pedido <strong>#${esc(shortId(d.orderId))}</strong> não foi registrada em 30 dias, então o pedido foi encaminhado para análise.`
         : `O comprador abriu uma disputa no pedido <strong>#${esc(shortId(d.orderId))}</strong>.`)}
+      ${jerseyPhoto(d)}
       ${details([
         ['Camisa',    `${d.teamName}${d.season ? ` · ${d.season}` : ''}`],
         ['Comprador', d.buyerName],
@@ -357,6 +380,7 @@ export function disputeOpenedBuyerEmail(d: OrderEmailData, reason: string, bySys
       ${p(bySystem
         ? `A entrega do pedido <strong>#${esc(shortId(d.orderId))}</strong> não foi registrada em 30 dias. O pagamento ao vendedor está <strong>retido</strong> e nossa equipe vai analisar o caso.`
         : `Sua disputa no pedido <strong>#${esc(shortId(d.orderId))}</strong> foi aberta e o pagamento ao vendedor está <strong>retido</strong> até a resolução.`)}
+      ${jerseyPhoto(d)}
       ${details([
         ['Camisa', `${d.teamName}${d.season ? ` · ${d.season}` : ''}`],
         ['Vendedor', d.sellerName],
@@ -376,6 +400,7 @@ export function disputeOpenedAdminEmail(d: OrderEmailData, reason: string, buyer
     subject: `🚨 Nova disputa — pedido #${shortId(d.orderId)}`,
     html: layout('Nova disputa aberta', `
       ${p('Uma disputa foi aberta (veja o motivo abaixo). O pagamento está retido até a decisão.')}
+      ${jerseyPhoto(d)}
       ${details([
         ['Pedido', `#${shortId(d.orderId)}`],
         ['ID completo', d.orderId],
@@ -424,13 +449,16 @@ export function orderPaidBuyerEmail(d: OrderEmailData): EmailContent {
     subject: `✅ Compra confirmada — ${d.teamName}`,
     html: layout('Sua compra foi confirmada!', `
       ${p(`O pagamento do pedido <strong>#${esc(shortId(d.orderId))}</strong> foi aprovado.`)}
+      ${jerseyPhoto(d)}
       ${details([
         ['Camisa',   `${d.teamName}${d.season ? ` · ${d.season}` : ''}`],
         ['Vendedor', d.sellerName],
         ['Total',    brl(d.totalCents ?? d.priceCents)],
         ['Pedido',   `#${shortId(d.orderId)}`],
       ])}
-      ${p('O vendedor já foi avisado e vai preparar o envio. Você recebe o código de rastreio por e-mail assim que a camisa for postada.')}
+      ${p(d.deliveryMethod === 'ENTREGA_EM_MAOS'
+        ? 'O vendedor já foi avisado. Combinem o local e o horário da <strong>entrega em mãos</strong> — ao receber a camisa, confirme o recebimento no app.'
+        : 'O vendedor já foi avisado e vai preparar o envio. Você recebe o código de rastreio por e-mail assim que a camisa for postada.')}
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
              style="background:#FEF3C7;border:1px solid #FDE68A;border-radius:12px;padding:14px 16px;margin:16px 0">
         <tr><td style="color:#92400E;font-size:14px;line-height:21px">
