@@ -65,6 +65,7 @@ export interface UserRecord {
   expoPushToken?: string;
 
   // Personal data (Dados Pessoais) — locked after first save
+  birthDate?: string;          // YYYY-MM-DD, 18+ (Terms §5)
   nomeCompleto?: string;
   dadosPessoaisLockedAt?: string;  // ISO timestamp; set when user saves for the first time
 
@@ -127,6 +128,7 @@ export interface UserPublic {
   totpEnabled: boolean;
   // Lets the app ask for the password only where one exists (not Google/Apple accounts).
   hasPassword: boolean;
+  birthDate?: string;
   status: UserStatus;
   createdAt: string;
 }
@@ -176,6 +178,7 @@ export function toPublic(u: UserRecord): UserPublic {
     mpcPurchasesCount: u.mpcPurchasesCount,
     totpEnabled: u.totpEnabled ?? false,
     hasPassword: !!u.passwordHash,
+    birthDate: u.birthDate,
     status: u.status,
     createdAt: u.createdAt,
   };

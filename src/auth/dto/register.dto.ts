@@ -15,4 +15,9 @@ export class RegisterDto {
 
   @IsOptional() @IsBoolean()
   marketingConsent?: boolean;
+
+  // YYYY-MM-DD. Optional only so app versions before 1.0.29 can still sign up;
+  // current apps always send it (Terms §5 — 18+ only).
+  @IsOptional() @IsString() @MaxLength(10)
+  birthDate?: string;
 }

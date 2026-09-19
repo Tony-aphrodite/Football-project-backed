@@ -10,6 +10,7 @@ import * as bcrypt from 'bcrypt';
 import { createHash, randomInt, timingSafeEqual } from 'node:crypto';
 import { TotpService } from './services/totp.service';
 import { assertReauthenticated } from './reauth';
+import { assertAdult } from '../common/age';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { ulid } from 'ulid';
@@ -97,12 +98,15 @@ export class AuthService {
     password: string,
     contactPhone?: string,
     marketingConsent?: boolean,
+    birthDate?: string,
   ): Promise<AuthSession> {
+    // Checked before anything is created: an under-18 never gets an account.
+    const adultBirthDate = birthDate ? assertAdult(birthDate) : undefined;
     const existing = await this.users.findByEmail(email);
     if (existing) throw new ConflictException('E-mail já cadastrado');
 
     const passwordHash = await bcrypt.hash(password, 12);
-    const user = await this.users.create({ displayName, email, passwordHash, contactPhone, marketingConsent });
+    const user = await this.users.create({ displayName, email, passwordHash, contactPhone, marketingConsent, birthDate: adultBirthDate });
     return this.issueSession(user);
   }
 

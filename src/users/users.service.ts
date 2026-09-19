@@ -5,6 +5,7 @@ import { DynamoDbService } from '../dynamodb/dynamodb.service';
 import { EmailService } from '../email/email.service';
 import { bankChangedNoticeEmail, welcomeEmail } from '../email/email.templates';
 import { assertReauthenticated } from '../auth/reauth';
+import { assertAdult } from '../common/age';
 import { Keys } from '../dynamodb/keys';
 import { toPublic, type UserRecord, type UserPublic } from './entities/user.entity';
 
@@ -16,6 +17,7 @@ interface CreateUserInput {
   passwordHash?: string;
   contactPhone?: string;
   marketingConsent?: boolean;
+  birthDate?: string;
 }
 
 /** Withdrawals pause this long after a bank account change. */
@@ -85,6 +87,7 @@ export class UsersService {
       passwordHash: input.passwordHash,
       contactPhone: input.contactPhone,
       marketingConsent: input.marketingConsent,
+      birthDate: input.birthDate,
       ratingCountAsSeller: 0,
       ratingCountAsBuyer: 0,
       listingsActiveCount: 0,
@@ -181,6 +184,21 @@ export class UsersService {
         },
       },
     ]);
+  }
+
+  /** Accounts created before the age check set their birth date once. */
+  async setBirthDate(userId: string, birthDate: string): Promise<UserPublic> {
+    const u = await this.getById(userId);
+    if (u.birthDate) throw new ConflictException('A data de nascimento já foi informada.');
+    const value = assertAdult(birthDate);
+    const now = new Date().toISOString();
+    await this.db.update({
+      Key: { PK: u.PK, SK: u.SK },
+      UpdateExpression: 'SET birthDate = :b, updatedAt = :now',
+      ConditionExpression: 'attribute_not_exists(birthDate)',
+      ExpressionAttributeValues: { ':b': value, ':now': now },
+    });
+    return toPublic({ ...u, birthDate: value });
   }
 
   async attachCpf(userId: string, cpf: string): Promise<void> {

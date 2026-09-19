@@ -37,7 +37,7 @@ export class AuthController {
   @HttpCode(201)
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
   register(@Body() dto: RegisterDto): Promise<AuthSession> {
-    return this.auth.registerWithEmail(dto.displayName, dto.email, dto.password, dto.contactPhone, dto.marketingConsent);
+    return this.auth.registerWithEmail(dto.displayName, dto.email, dto.password, dto.contactPhone, dto.marketingConsent, dto.birthDate);
   }
 
   @Post('forgot-password')

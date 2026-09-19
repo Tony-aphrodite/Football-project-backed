@@ -46,6 +46,10 @@ class ChangeBankDto extends UpdateBankDto {
   @IsOptional() @IsString() @Matches(/^\d{6}$/) totpCode?: string;
 }
 
+class BirthDateDto {
+  @IsString() @MaxLength(10) birthDate!: string;
+}
+
 class SacarDto {
   @IsInt() @Min(100) amountCents!: number;
 }
@@ -99,6 +103,12 @@ export class UsersController {
       if ((e as Error).message === 'LOCKED') throw new BadRequestException('Dados pessoais já registrados. Entre em contato via contato@arenadosmantos.app.br');
       throw e;
     }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('me/birth-date')
+  setBirthDate(@Body() dto: BirthDateDto, @Request() req: { user: JwtPayload }) {
+    return this.users.setBirthDate(req.user.sub, dto.birthDate);
   }
 
   @UseGuards(JwtAuthGuard)
