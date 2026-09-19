@@ -22,6 +22,7 @@ import { QuizModule } from './quiz/quiz.module';
 import { DeveloperEarningsModule } from './developer-earnings/developer-earnings.module';
 import { FiscalModule } from './fiscal/fiscal.module';
 import { CartModule } from './cart/cart.module';
+import { AccountModule } from './account/account.module';
 
 @Module({
   imports: [
@@ -56,6 +57,7 @@ import { CartModule } from './cart/cart.module';
     DeveloperEarningsModule,
     FiscalModule,
     CartModule,
+    AccountModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

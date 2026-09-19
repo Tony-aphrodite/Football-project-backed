@@ -166,6 +166,26 @@ export function passwordResetEmail(code: string): EmailContent {
   };
 }
 
+/** Last e-mail to an account the owner deleted. */
+export function accountDeletedEmail(name: string): EmailContent {
+  const first = name.split(' ')[0] || name;
+  return {
+    subject: 'Sua conta foi excluída — Arena dos Mantos',
+    html: layout(`Até logo, ${esc(first)}`, `
+      ${p('Sua conta na Arena dos Mantos foi excluída, a seu pedido. Seus anúncios ativos foram retirados e seus dados pessoais serão eliminados em até 30 dias.')}
+      ${p('Por obrigação legal, mantemos por 5 anos apenas os dados fiscais e de transações já realizadas.')}
+      ${p('Se você tinha saldo de vendas, ele continua sendo transferido automaticamente para a sua conta bancária no dia 5 de cada mês.')}
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+             style="background:#FEF3C7;border:1px solid #FDE68A;border-radius:12px;padding:14px 16px;margin:16px 0">
+        <tr><td style="color:#92400E;font-size:14px;line-height:21px">
+          <strong>Não foi você?</strong> Entre em contato imediatamente com
+          <a href="mailto:${CONTATO}" style="color:#92400E;font-weight:700">${CONTATO}</a>.
+        </td></tr>
+      </table>
+    `),
+  };
+}
+
 /** Sent to the NEW address: typing the code back proves the person owns it. */
 export function emailChangeCodeEmail(code: string): EmailContent {
   return {
