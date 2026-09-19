@@ -1,4 +1,4 @@
-import { UnauthorizedException } from '@nestjs/common';
+import { ForbiddenException } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { authenticator } from 'otplib';
 
@@ -10,6 +10,9 @@ import type { UserRecord } from '../users/entities/user.entity';
  * password, the 2FA code, or both. Google/Apple accounts without 2FA have
  * neither; for those the session plus the follow-up notice e-mail is the check.
  *
+ * 403, not 401: the session is fine, only this confirmation failed — a 401
+ * makes the app refresh its session and silently resend the request.
+ *
  * Uses the same otplib singleton as TotpService, which widens its window to ±30s.
  */
 export async function assertReauthenticated(
@@ -18,12 +21,12 @@ export async function assertReauthenticated(
 ): Promise<void> {
   if (user.passwordHash) {
     if (!input.password || !(await bcrypt.compare(input.password, user.passwordHash))) {
-      throw new UnauthorizedException('Senha incorreta.');
+      throw new ForbiddenException('Senha incorreta.');
     }
   }
   if (user.totpEnabled && user.totpSecret) {
     if (!input.totpCode || !authenticator.verify({ token: input.totpCode, secret: user.totpSecret })) {
-      throw new UnauthorizedException('Código de autenticação (2FA) inválido.');
+      throw new ForbiddenException('Código de autenticação (2FA) inválido.');
     }
   }
 }
