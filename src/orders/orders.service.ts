@@ -121,7 +121,12 @@ export class OrdersService {
 
     // Fetch seller
     const sellerKey = Keys.user(listing.sellerId);
-    const seller = await this.db.get<{ displayName: string; sellerCep?: string }>(sellerKey.PK, sellerKey.SK);
+    const seller = await this.db.get<{ displayName: string; sellerCep?: string; pagarmeRecipientId?: string; status?: string }>(sellerKey.PK, sellerKey.SK);
+    // A seller who cannot receive money (no bank details, or no longer active)
+    // cannot be paid through the split — refuse before any money moves.
+    if (!seller?.pagarmeRecipientId || (seller.status && seller.status !== 'ACTIVE')) {
+      throw new BadRequestException('Este anúncio não está disponível para compra no momento.');
+    }
     const sellerName = seller?.displayName ?? 'Vendedor';
     const sellerCep  = seller?.sellerCep;
 
