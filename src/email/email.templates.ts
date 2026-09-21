@@ -454,7 +454,6 @@ export function orderDeliveredBuyerEmail(d: OrderEmailData): EmailContent {
     html: layout('Sua camisa chegou!', `
       ${p(`Os Correios registraram a entrega de <strong>${esc(d.teamName)}</strong>.`)}
       ${p('Confira a camisa com calma. Você tem <strong>7 dias</strong> para relatar qualquer problema pelo app (em <strong>Meus pedidos</strong> → <strong>Tive um problema com este pedido</strong>). Depois desse prazo, o pagamento é liberado ao vendedor.')}
-      ${p(`<span style="color:${SUAVE};font-size:13px">Se você se arrependeu da compra, escreva para <a href="mailto:${CONTATO}" style="color:${SUAVE}">${CONTATO}</a> dentro desse prazo para iniciar a devolução.</span>`)}
     `),
   };
 }
