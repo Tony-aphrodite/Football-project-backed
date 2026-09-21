@@ -43,6 +43,9 @@ import {
  * days, and at 30 days the order becomes a dispute for Arena to decide.
  */
 const DAY_MS = 24 * 3_600_000;
+/** New-account wall: purchases in progress allowed before the first completed one. */
+const NEW_ACCOUNT_OPEN_ORDERS = 2;
+const OPEN_ORDER_STATUSES: string[] = ['PENDING_PAYMENT', 'PAID', 'SHIPPED', 'DELIVERED', 'DISPUTED'];
 /** Where Arena is told about things that need a human (disputes). */
 const ADMIN_ALERT_EMAIL = process.env.ADMIN_ALERT_EMAIL ?? 'contato@arenadosmantos.app.br';
 const RELEASE_AFTER_DELIVERY_MS = 7 * DAY_MS;
@@ -78,12 +81,36 @@ export class OrdersService {
     };
   }
 
+  /**
+   * Anti-fraud wall for new accounts: until a buyer has completed one
+   * purchase, they may have at most NEW_ACCOUNT_OPEN_ORDERS purchases in
+   * progress. Unpaid orders count — they reserve jerseys too. One completed
+   * purchase lifts the limit.
+   */
+  private async assertWithinNewAccountLimit(buyerId: string): Promise<void> {
+    const mine = await this.db.query<OrderRecord>({
+      IndexName:                 'GSI1',
+      KeyConditionExpression:    'GSI1PK = :pk',
+      ExpressionAttributeValues: { ':pk': Gsi.ordersAsBuyer(buyerId).GSI1PK },
+    });
+    if (mine.some((o) => o.status === 'COMPLETED')) return;
+    const open = mine.filter((o) => OPEN_ORDER_STATUSES.includes(o.status)).length;
+    if (open >= NEW_ACCOUNT_OPEN_ORDERS) {
+      throw new BadRequestException(
+        `Contas novas podem ter até ${NEW_ACCOUNT_OPEN_ORDERS} compras em andamento. ` +
+        'Assim que uma compra for concluída, você poderá comprar mais.',
+      );
+    }
+  }
+
   async create(buyerId: string, dto: CreateOrderDto): Promise<OrderPublic> {
     // Fetch buyer
     const buyerKey = Keys.user(buyerId);
     const buyer = await this.db.get<{ displayName: string; cpf?: string }>(buyerKey.PK, buyerKey.SK);
     if (!buyer) throw new NotFoundException('Buyer not found');
     if (!buyer.cpf) throw new BadRequestException('CPF obrigatório para realizar uma compra. Preencha em Dados Pessoais.');
+
+    await this.assertWithinNewAccountLimit(buyerId);
 
     // Fetch listing
     const listingKey = Keys.listing(dto.listingId);
