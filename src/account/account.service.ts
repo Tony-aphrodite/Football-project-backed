@@ -21,8 +21,8 @@ const OPEN_STATUSES = ['PENDING_PAYMENT', 'PAID', 'SHIPPED', 'DELIVERED', 'DISPU
  * listings, and the e-mail/phone/CPF/Google/Apple lookups — so the person can
  * sign up again later.
  *
- * What stays, as the policy allows: the CPF and bank details on the closed
- * record (tax and consumer-law retention, 5 years), the Pagar.me recipient —
+ * What stays, as the policy allows: a seller's bank details and CPF (tax and
+ * consumer-law retention, 5 years) — a buyer's CPF is removed, the Pagar.me recipient —
  * its available balance keeps being paid out automatically on the 5th of each
  * month — and past orders and ratings.
  */
@@ -104,13 +104,18 @@ export class AccountService {
       }]).catch((err) => this.logger.warn(`Lookup ${key.PK} not removed for ${userId}`, err));
     }
 
+    // The CPF stays only where the policy allows it: as part of a seller's
+    // bank details (kept 5 years for tax reasons). A buyer's CPF goes with
+    // the rest of their registration data (Privacy Policy §10).
+    const keepCpf = !!user.bankLockedAt;
+
     const now = new Date().toISOString();
     const k = Keys.user(userId);
     await this.db.update({
       Key: { PK: k.PK, SK: k.SK },
       UpdateExpression: [
         'SET #s = :deleted, deletedAt = :now, displayName = :anon, updatedAt = :now',
-        'REMOVE email, phoneE164, contactPhone, nomeCompleto, expoPushToken, savedCard,',
+        `REMOVE ${keepCpf ? '' : 'cpf, birthDate, '}email, phoneE164, contactPhone, nomeCompleto, expoPushToken, savedCard,`,
         'passwordHash, totpSecret, totpPendingSecret, googleSub, appleSub, marketingConsent,',
         'sellerCep, sellerRua, sellerNumero, sellerComplemento, sellerBairro, sellerCidade, sellerEstado',
       ].join(' '),
