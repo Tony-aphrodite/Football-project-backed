@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { ulid } from 'ulid';
 
 import { DynamoDbService } from '../dynamodb/dynamodb.service';
@@ -11,6 +11,7 @@ import {
 } from './entities/rating.entity';
 import type { CreateRatingDto } from './dto/create-rating.dto';
 import type { UserRecord } from '../users/entities/user.entity';
+import type { OrderRecord } from '../orders/entities/order.entity';
 
 @Injectable()
 export class RatingsService {
@@ -24,6 +25,20 @@ export class RatingsService {
         `Expected ${expectedLength} scores for raterRole=${dto.raterRole}`,
       );
     }
+
+    // A rating must come from one side of a delivered order and be about the
+    // other side — otherwise anyone could rate anyone (fake reviews).
+    const orderKey = Keys.order(dto.orderId);
+    const order = await this.db.get<OrderRecord>(orderKey.PK, orderKey.SK);
+    if (!order) throw new NotFoundException('Pedido não encontrado.');
+    const isBuyer  = dto.raterRole === 'BUYER'  && order.buyerId === raterId  && order.sellerId === dto.rateeId;
+    const isSeller = dto.raterRole === 'SELLER' && order.sellerId === raterId && order.buyerId === dto.rateeId;
+    if (!isBuyer && !isSeller) throw new ForbiddenException('Você não pode avaliar este pedido.');
+    if (order.status !== 'DELIVERED' && order.status !== 'COMPLETED') {
+      throw new BadRequestException('A avaliação fica disponível depois da entrega.');
+    }
+    const ratedField = isBuyer ? 'ratedByBuyerAt' : 'ratedBySellerAt';
+    if (order[ratedField]) throw new ConflictException('Você já avaliou este pedido.');
 
     const rateeKey = Keys.user(dto.rateeId);
     const ratee    = await this.db.get<UserRecord>(rateeKey.PK, rateeKey.SK);
@@ -72,7 +87,19 @@ export class RatingsService {
       exprValues = { ':newCount': newCount, ':newAvg': newAvg, ':now': now };
     }
 
-    await this.db.transactWrite([
+    try {
+      await this.db.transactWrite([
+      {
+        // Marks the order as rated by this side; the condition makes a second
+        // rating fail even if two arrive at the same moment.
+        Update: {
+          TableName: this.db.tableName,
+          Key: { PK: orderKey.PK, SK: orderKey.SK },
+          UpdateExpression: `SET ${ratedField} = :now`,
+          ConditionExpression: `attribute_not_exists(${ratedField})`,
+          ExpressionAttributeValues: { ':now': now },
+        },
+      },
       {
         Put: {
           TableName: this.db.tableName,
@@ -87,7 +114,12 @@ export class RatingsService {
           ExpressionAttributeValues: exprValues,
         },
       },
-    ]);
+      ]);
+    } catch (err) {
+      const name = (err as { name?: string }).name;
+      if (name === 'TransactionCanceledException') throw new ConflictException('Você já avaliou este pedido.');
+      throw err;
+    }
 
     return toRatingPublic(record);
   }

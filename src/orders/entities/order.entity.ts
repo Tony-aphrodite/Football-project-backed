@@ -61,6 +61,8 @@ export interface OrderRecord {
   deliveredAt?:             string;
   disputeResolvedAt?:       string;
   disputeResolution?:       string;
+  ratedByBuyerAt?:          string;   // one rating per side per order
+  ratedBySellerAt?:         string;
   melhorEnvioOrderId?:      string;
   shippingLabelUrl?:        string;
   shippingTrackingCode?:    string;
@@ -128,6 +130,8 @@ export interface OrderPublic {
   shippingActualCostCents?: number;
   shippingSpreadCents?:     number;
   spreadBeneficiary?:       'DEVELOPER' | 'ARENA';
+  ratedByBuyerAt?:          string;
+  ratedBySellerAt?:         string;
   createdAt:      string;
   updatedAt:      string;
 }
@@ -165,6 +169,8 @@ export function toOrderPublic(o: OrderRecord): OrderPublic {
     shippingActualCostCents:  o.shippingActualCostCents,
     shippingSpreadCents:      o.shippingSpreadCents,
     spreadBeneficiary:        o.spreadBeneficiary,
+    ratedByBuyerAt:           o.ratedByBuyerAt,
+    ratedBySellerAt:          o.ratedBySellerAt,
     createdAt: o.createdAt, updatedAt: o.updatedAt,
   };
 }
