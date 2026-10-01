@@ -1,6 +1,7 @@
 import { Body, Controller, Get, HttpCode, Param, Patch, Post, UseGuards, UsePipes, ValidationPipe } from '@nestjs/common';
 
 import { AdminGuard } from '../common/guards/admin.guard';
+import { EmailService } from '../email/email.service';
 import { AdminService, type AdminStats, type CreateCouponDto } from './admin.service';
 import type { ReportWithComment } from './entities/report.entity';
 import type { UserPublic } from '../users/entities/user.entity';
@@ -12,7 +13,26 @@ import { CreateQuizDto } from '../quiz/dto/create-quiz.dto';
 @Controller('admin')
 @UseGuards(AdminGuard)
 export class AdminController {
-  constructor(private readonly admin: AdminService) {}
+  constructor(
+    private readonly admin: AdminService,
+    private readonly email: EmailService,
+  ) {}
+
+  /**
+   * Admin: send a test e-mail and report exactly what the provider answered.
+   * The only way to tell "we never sent it" from "the provider refused it"
+   * without access to the server logs.
+   */
+  @Post('test-email')
+  @HttpCode(200)
+  async testEmail(@Body() dto: { to: string }): Promise<unknown> {
+    const result = await this.email.send(
+      dto.to,
+      'Teste de envio — Arena dos Mantos',
+      '<p>Este é um teste de envio da Arena dos Mantos. Se você recebeu, o envio de e-mails está funcionando.</p>',
+    );
+    return { ...result, providers: this.email.configuredProviders };
+  }
 
   // ── Stats ──────────────────────────────────────────────────────────────────
 
