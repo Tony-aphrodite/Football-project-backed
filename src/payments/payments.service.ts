@@ -161,8 +161,10 @@ export class PaymentsService {
       this.logger.error(
         `Pagar.me gave no PIX QR code for order ${orderId}: ${charge ? describeDecline(charge) ?? charge.status : 'no charge'}`,
       );
-      // Same as a refused card: the jersey goes back on sale.
-      await this.cancelUnpaidOrder(orderId, `pix ${charge?.status ?? 'no charge'}: ${charge ? describeDecline(charge) ?? '' : ''}`);
+      // The order stays pending on purpose: the buyer can try the same order
+      // again, with PIX or with a card, instead of leaving a cancelled order
+      // behind on every attempt. expireUnpaidOrders() puts the jersey back on
+      // sale 30 minutes later if they give up.
       throw new ServiceUnavailableException(
         'Não foi possível gerar o PIX para esta compra. Tente novamente em alguns minutos ou pague com cartão de crédito.',
       );
@@ -547,7 +549,10 @@ export class PaymentsService {
 
     for (const order of pending) {
       const ageMin = (nowMs - new Date(order.createdAt).getTime()) / 60_000;
-      const limitMin = order.paymentMethod === 'CREDIT_CARD' ? 30 : 26 * 60;
+      // An order whose charge was never created — a PIX Pagar.me refused to
+      // generate — holds a jersey off the market, so it expires as fast as an
+      // unpaid card order instead of waiting out the 24h PIX window.
+      const limitMin = order.paymentMethod === 'CREDIT_CARD' || !order.pagarmeOrderId ? 30 : 26 * 60;
       const expired = ageMin >= limitMin;
 
       if (order.pagarmeOrderId) {
