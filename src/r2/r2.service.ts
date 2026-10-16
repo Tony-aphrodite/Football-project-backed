@@ -66,6 +66,28 @@ export class R2Service {
     return { uploadUrl, key };
   }
 
+  /** One profile picture per upload; the old key is deleted once the new one is saved. */
+  async presignAvatar(userId: string, contentType: string): Promise<{ uploadUrl: string; key: string }> {
+    if (!this.client) {
+      throw new InternalServerErrorException('Photo upload not available — R2 not configured');
+    }
+    if (!ALLOWED_CONTENT_TYPES.includes(contentType)) {
+      throw new InternalServerErrorException('Unsupported content type');
+    }
+
+    const ext = contentType.split('/')[1].replace('jpeg', 'jpg');
+    const key = `avatars/${userId}/${ulid()}.${ext}`;
+
+    const command = new PutObjectCommand({
+      Bucket:      this.bucket,
+      Key:         key,
+      ContentType: contentType,
+    });
+
+    const uploadUrl = await getSignedUrl(this.client, command, { expiresIn: PRESIGN_TTL_SECONDS });
+    return { uploadUrl, key };
+  }
+
   async deleteObject(key: string): Promise<void> {
     if (!this.client) return;
     await this.client.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: key }));

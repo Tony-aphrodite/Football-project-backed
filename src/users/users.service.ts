@@ -7,6 +7,7 @@ import { bankChangedNoticeEmail, welcomeEmail } from '../email/email.templates';
 import { assertReauthenticated } from '../auth/reauth';
 import { assertAdult } from '../common/age';
 import { Keys } from '../dynamodb/keys';
+import { R2Service } from '../r2/r2.service';
 import { toPublic, type UserRecord, type UserPublic } from './entities/user.entity';
 
 interface CreateUserInput {
@@ -30,6 +31,7 @@ export class UsersService {
   constructor(
     private readonly db: DynamoDbService,
     private readonly email: EmailService,
+    private readonly r2: R2Service,
   ) {}
 
   async findById(userId: string): Promise<UserRecord | undefined> {
@@ -510,6 +512,57 @@ export class UsersService {
       UpdateExpression: 'SET expoPushToken = :t, updatedAt = :now',
       ExpressionAttributeValues: { ':t': token, ':now': new Date().toISOString() },
     });
+  }
+
+  /**
+   * Point the profile at a freshly uploaded picture, or clear it. The previous
+   * file is removed from R2 so an account keeps at most one avatar; a key that
+   * does not belong to this user is refused.
+   */
+  async setAvatar(userId: string, avatarKey: string | null): Promise<UserPublic> {
+    const u = await this.getById(userId);
+
+    if (avatarKey && !avatarKey.startsWith(`avatars/${userId}/`)) {
+      throw new BadRequestException('Invalid avatar key');
+    }
+
+    await this.db.update({
+      Key: { PK: u.PK, SK: u.SK },
+      UpdateExpression: avatarKey
+        ? 'SET avatarKey = :k, updatedAt = :now'
+        : 'REMOVE avatarKey SET updatedAt = :now',
+      ExpressionAttributeValues: avatarKey
+        ? { ':k': avatarKey, ':now': new Date().toISOString() }
+        : { ':now': new Date().toISOString() },
+    });
+
+    if (u.avatarKey && u.avatarKey !== avatarKey) {
+      try {
+        await this.r2.deleteObject(u.avatarKey);
+      } catch (err) {
+        this.logger.warn(`Could not delete the old avatar of ${userId}`, err);
+      }
+    }
+
+    return toPublic({ ...u, avatarKey: avatarKey ?? undefined });
+  }
+
+  /** What anyone may see about another member: the name, the picture, the ratings. */
+  async publicProfile(userId: string): Promise<{
+    userId: string;
+    displayName: string;
+    avatarKey?: string;
+    ratingAvgAsSeller?: number;
+    ratingCountAsSeller: number;
+  }> {
+    const u = await this.getById(userId);
+    return {
+      userId:              u.userId,
+      displayName:         u.displayName,
+      avatarKey:           u.avatarKey,
+      ratingAvgAsSeller:   u.ratingAvgAsSeller,
+      ratingCountAsSeller: u.ratingCountAsSeller,
+    };
   }
 
   // ── private helpers ────────────────────────────────────────────────────────

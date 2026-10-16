@@ -1,10 +1,11 @@
-import { BadRequestException, Body, Controller, Get, Param, Patch, Post, Request, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post, Request, UseGuards } from '@nestjs/common';
 import { IsInt, IsOptional, IsString, Length, Matches, MaxLength, Min } from 'class-validator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { AdminGuard } from '../common/guards/admin.guard';
 import { UsersService } from './users.service';
 import { Throttle } from '@nestjs/throttler';
 import { PagarmeService } from '../payments/pagarme.service';
+import { R2Service } from '../r2/r2.service';
 import { SurveyDto } from './dto/survey.dto';
 import type { JwtPayload } from '../auth/types/jwt-payload.type';
 
@@ -24,6 +25,14 @@ class UpdateCepDto {
 
 class SetRecipientDto {
   @IsString() recipientId!: string;
+}
+
+class PresignAvatarDto {
+  @IsString() @Matches(/^image\/(jpeg|png|webp)$/) contentType!: string;
+}
+
+class SetAvatarDto {
+  @IsString() @MaxLength(200) avatarKey!: string;
 }
 
 class UpdateDadosPessoaisDto {
@@ -59,6 +68,7 @@ export class UsersController {
   constructor(
     private readonly users: UsersService,
     private readonly pagarme: PagarmeService,
+    private readonly r2: R2Service,
   ) {}
 
   @UseGuards(JwtAuthGuard)
@@ -86,6 +96,33 @@ export class UsersController {
   @Patch('me/cep')
   updateCep(@Body() dto: UpdateCepDto, @Request() req: { user: JwtPayload }) {
     return this.users.updateSellerCep(req.user.sub, dto.cep, dto.rua, dto.numero, dto.cidade, dto.estado, dto.complemento, dto.bairro);
+  }
+
+  /** Step 1 of setting a profile picture: where to PUT the file. */
+  @UseGuards(JwtAuthGuard)
+  @Post('me/avatar/presign')
+  presignAvatar(@Body() dto: PresignAvatarDto, @Request() req: { user: JwtPayload }) {
+    return this.r2.presignAvatar(req.user.sub, dto.contentType);
+  }
+
+  /** Step 2: the upload finished, so the key becomes the profile picture. */
+  @UseGuards(JwtAuthGuard)
+  @Patch('me/avatar')
+  setAvatar(@Body() dto: SetAvatarDto, @Request() req: { user: JwtPayload }) {
+    return this.users.setAvatar(req.user.sub, dto.avatarKey);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Delete('me/avatar')
+  removeAvatar(@Request() req: { user: JwtPayload }) {
+    return this.users.setAvatar(req.user.sub, null);
+  }
+
+  /** Name, picture and seller rating of another member. */
+  @UseGuards(JwtAuthGuard)
+  @Get(':userId/public')
+  publicProfile(@Param('userId') userId: string) {
+    return this.users.publicProfile(userId);
   }
 
   @UseGuards(JwtAuthGuard)

@@ -17,6 +17,7 @@ export interface UserRecord {
 
   userId: string;
   displayName: string;
+  avatarKey?: string;      // R2 key of the profile picture, if the user set one
 
   // Authentication identifiers — at most one of (googleSub, appleSub) per user.
   googleSub?: string;
@@ -96,6 +97,7 @@ export interface UserRecord {
 export interface UserPublic {
   userId: string;
   displayName: string;
+  avatarKey?: string;
   email?: string;
   phoneE164?: string;
   cpf?: string;
@@ -145,6 +147,7 @@ export function toPublic(u: UserRecord): UserPublic {
   return {
     userId: u.userId,
     displayName: u.displayName,
+    avatarKey: u.avatarKey,
     email: u.email,
     phoneE164: u.phoneE164,
     cpf: u.cpf,
