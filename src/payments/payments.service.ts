@@ -163,7 +163,9 @@ export class PaymentsService {
       );
       // Same as a refused card: the jersey goes back on sale.
       await this.cancelUnpaidOrder(orderId, `pix ${charge?.status ?? 'no charge'}: ${charge ? describeDecline(charge) ?? '' : ''}`);
-      throw new ServiceUnavailableException('Não foi possível gerar o PIX agora. Tente novamente mais tarde.');
+      throw new ServiceUnavailableException(
+        'Não foi possível gerar o PIX para esta compra. Tente novamente em alguns minutos ou pague com cartão de crédito.',
+      );
     }
 
     const pixExpiresAt = tx.expires_at ?? new Date(Date.now() + 86_400_000).toISOString();
@@ -528,8 +530,10 @@ export class PaymentsService {
 
   /**
    * Hourly sweep of orders nobody paid: card orders after 30 minutes, PIX
-   * orders once the 24h QR code has expired. Pagar.me is asked first, so a
-   * payment whose webhook got lost is marked PAID instead of cancelled.
+   * orders once the 24h QR code has expired. Pagar.me is asked about *every*
+   * pending order, not only the expired ones: a buyer who closes the PIX
+   * screen and pays later has nothing else polling for them, and waiting for
+   * the expiry window would leave the order "Aguardando pagamento" for a day.
    */
   async expireUnpaidOrders(): Promise<void> {
     const pending = await this.db.scanAll<OrderRecord & { pagarmeOrderId?: string; paymentMethod?: string }>({
@@ -539,17 +543,19 @@ export class PaymentsService {
     });
     const nowMs = Date.now();
     let cancelled = 0;
+    let confirmed = 0;
 
     for (const order of pending) {
       const ageMin = (nowMs - new Date(order.createdAt).getTime()) / 60_000;
       const limitMin = order.paymentMethod === 'CREDIT_CARD' ? 30 : 26 * 60;
-      if (ageMin < limitMin) continue;
+      const expired = ageMin >= limitMin;
 
       if (order.pagarmeOrderId) {
         try {
           const remote = await this.pagarme.getOrder(order.pagarmeOrderId);
           if (remote.status === 'paid') {
             await this.markPaid(order.orderId);
+            confirmed++;
             continue;
           }
         } catch (err) {
@@ -558,8 +564,10 @@ export class PaymentsService {
           continue;
         }
       }
+      if (!expired) continue;
       if (await this.cancelUnpaidOrder(order.orderId, `unpaid after ${Math.round(ageMin)} min`)) cancelled++;
     }
+    if (confirmed > 0) this.logger.log(`Confirmed ${confirmed} payment(s) Pagar.me had not told us about`);
     if (cancelled > 0) this.logger.log(`Expired ${cancelled} unpaid order(s)`);
   }
 
