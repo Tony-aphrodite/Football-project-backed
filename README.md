@@ -1,5 +1,7 @@
 # Arena dos Mantos — Backend
 
+[![CI](https://github.com/Tony-aphrodite/Football-project-backed/actions/workflows/ci.yml/badge.svg)](https://github.com/Tony-aphrodite/Football-project-backed/actions/workflows/ci.yml)
+
 NestJS API on Railway, backed by DynamoDB single-table.
 
 ## Local development
