@@ -346,13 +346,4 @@ export class ShippingService {
       throw err;
     }
   }
-
-  // ── Tracking status mapping ─────────────────────────────────────────────────
-
-  mapTrackingStatus(meStatus: string): 'SHIPPED' | 'DELIVERED' | null {
-    const s = meStatus.toLowerCase();
-    if (['posted', 'in_transit', 'out_for_delivery'].some((k) => s.includes(k))) return 'SHIPPED';
-    if (['delivered'].some((k) => s.includes(k))) return 'DELIVERED';
-    return null;
-  }
 }
