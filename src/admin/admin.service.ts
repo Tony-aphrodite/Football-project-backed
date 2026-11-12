@@ -68,12 +68,14 @@ export class AdminService {
 
   // ── Users ──────────────────────────────────────────────────────────────────
 
-  async listUsers(limit = 50): Promise<UserPublic[]> {
-    const records = await this.db.scan<UserRecord>({
+  async listUsers(): Promise<UserPublic[]> {
+    // Limit on a scan caps the rows read before the filter, not the users
+    // returned: with Limit 50 the panel showed 5 of 41 accounts.
+    const records = await this.db.scanAll<UserRecord>({
       FilterExpression:          'entityType = :type',
       ExpressionAttributeValues: { ':type': 'User' },
-      Limit:                     limit,
     });
+    records.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     return records.map(toPublic);
   }
 
@@ -139,11 +141,10 @@ export class AdminService {
 
   // ── Orders ─────────────────────────────────────────────────────────────────
 
-  async listAllOrders(limit = 50): Promise<OrderPublic[]> {
-    const records = await this.db.scan<OrderRecord>({
+  async listAllOrders(): Promise<OrderPublic[]> {
+    const records = await this.db.scanAll<OrderRecord>({
       FilterExpression:          'entityType = :type',
       ExpressionAttributeValues: { ':type': 'Order' },
-      Limit:                     limit,
     });
     records.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     return records.map(toOrderPublic);
@@ -283,7 +284,7 @@ export class AdminService {
   }
 
   async listCoupons(): Promise<CouponRecord[]> {
-    return this.db.scan<CouponRecord>({
+    return this.db.scanAll<CouponRecord>({
       FilterExpression: 'entityType = :t',
       ExpressionAttributeValues: { ':t': 'Coupon' },
     });

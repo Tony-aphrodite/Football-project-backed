@@ -141,7 +141,7 @@ export class DeveloperEarningsService {
   async getSummary(): Promise<DeveloperEarningsPublic> {
     const record = await this.ensureRecord();
 
-    const withdrawals = await this.db.scan<DeveloperWithdrawalRecord>({
+    const withdrawals = await this.db.scanAll<DeveloperWithdrawalRecord>({
       FilterExpression:          'entityType = :t',
       ExpressionAttributeValues: { ':t': 'DeveloperWithdrawal' },
     });

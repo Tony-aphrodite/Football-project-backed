@@ -145,7 +145,7 @@ export class FiscalService {
   // ── Admin: list all invoices ───────────────────────────────────────────────
 
   async listInvoices(): Promise<InvoicePublic[]> {
-    const records = await this.db.scan<InvoiceRecord>({
+    const records = await this.db.scanAll<InvoiceRecord>({
       FilterExpression:          'entityType = :t',
       ExpressionAttributeValues: { ':t': 'Invoice' },
     });

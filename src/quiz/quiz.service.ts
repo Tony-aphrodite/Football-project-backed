@@ -60,7 +60,7 @@ export class QuizService {
   }
 
   async listAll(): Promise<QuizRecord[]> {
-    return this.db.scan<QuizRecord>({
+    return this.db.scanAll<QuizRecord>({
       FilterExpression: 'entityType = :t',
       ExpressionAttributeValues: { ':t': 'Quiz' },
     });

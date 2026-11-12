@@ -64,16 +64,10 @@ export class DynamoDbService {
     return out.Count ?? 0;
   }
 
-  async scan<T>(input: Omit<ScanCommandInput, 'TableName'>): Promise<T[]> {
-    const out = await this.doc.send(
-      new ScanCommand({ ...input, TableName: this.tableName }),
-    );
-    return (out.Items ?? []) as T[];
-  }
-
   /**
-   * Scan every page. A plain `scan` stops at DynamoDB's 1MB read limit, which
-   * silently drops rows once the table grows — always use this for "all rows".
+   * Scan every page. A single scan stops at DynamoDB's 1MB read limit, which
+   * silently drops rows once the table grows, and its `Limit` caps the rows
+   * read before any filter — so there is deliberately no single-page scan.
    */
   async scanAll<T>(input: Omit<ScanCommandInput, 'TableName'>): Promise<T[]> {
     const items: T[] = [];
@@ -89,10 +83,16 @@ export class DynamoDbService {
   }
 
   async scanCount(input: Omit<ScanCommandInput, 'TableName' | 'Select'>): Promise<number> {
-    const out = await this.doc.send(
-      new ScanCommand({ ...input, TableName: this.tableName, Select: 'COUNT' }),
-    );
-    return out.Count ?? 0;
+    let count = 0;
+    let key: Record<string, unknown> | undefined;
+    do {
+      const out = await this.doc.send(
+        new ScanCommand({ ...input, TableName: this.tableName, Select: 'COUNT', ExclusiveStartKey: key }),
+      );
+      count += out.Count ?? 0;
+      key = out.LastEvaluatedKey;
+    } while (key);
+    return count;
   }
 
   async update(input: Omit<UpdateCommandInput, 'TableName'>): Promise<void> {
