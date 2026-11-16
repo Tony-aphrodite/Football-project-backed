@@ -14,6 +14,7 @@ import type { UpdatePriceDto } from './dto/update-price.dto';
 import type { UpdateListingDto } from './dto/update-listing.dto';
 import { AlgoliaService, type ListingIndexRecord } from '../search/algolia.service';
 import { maskContacts } from '../common/contact-filter';
+import { withCurrentPagarmeIds, type PagarmeIds } from '../payments/pagarme-mode';
 
 const LISTING_CAP = 20;
 
@@ -62,8 +63,9 @@ export class ListingsService {
   async create(sellerId: string, dto: CreateListingDto): Promise<{ listing: ListingPublic; listingsActiveCount: number }> {
     // Enforce cap atomically via conditional update on the user profile.
     const userKey = Keys.user(sellerId);
-    const userItem = await this.db.get<{ listingsActiveCount: number; displayName: string; email?: string; cpf?: string; bankLockedAt?: string; pagarmeRecipientId?: string }>(userKey.PK, userKey.SK);
-    if (!userItem) throw new NotFoundException('User not found');
+    const storedUser = await this.db.get<PagarmeIds & { listingsActiveCount: number; displayName: string; email?: string; cpf?: string }>(userKey.PK, userKey.SK);
+    if (!storedUser) throw new NotFoundException('User not found');
+    const userItem = withCurrentPagarmeIds(storedUser);
     if (!userItem.cpf) throw new BadRequestException('CPF obrigatório para anunciar. Preencha em Dados Pessoais.');
     // No payout account, no selling: the sale's money is split to the seller's
     // Pagar.me account, which only exists once bank details are registered.

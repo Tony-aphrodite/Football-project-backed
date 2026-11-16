@@ -239,6 +239,26 @@ export class ShippingService {
    */
   async trackingStatus(melhorEnvioOrderIds: string[]): Promise<Record<string, { status?: string; tracking?: string }>> {
     if (!this.token || melhorEnvioOrderIds.length === 0) return {};
+    try {
+      return await this.trackingRequest(melhorEnvioOrderIds);
+    } catch (err) {
+      if (melhorEnvioOrderIds.length === 1) throw err;
+      // One ID Melhor Envio does not know — e.g. a label bought in the sandbox
+      // — must not hide every other order's status: ask one by one.
+      this.logger.warn(`Tracking batch failed, retrying ${melhorEnvioOrderIds.length} orders one by one`, err);
+      const merged: Record<string, { status?: string; tracking?: string }> = {};
+      for (const id of melhorEnvioOrderIds) {
+        try {
+          Object.assign(merged, await this.trackingRequest([id]));
+        } catch (oneErr) {
+          this.logger.warn(`Tracking failed for Melhor Envio order ${id}`, oneErr);
+        }
+      }
+      return merged;
+    }
+  }
+
+  private async trackingRequest(melhorEnvioOrderIds: string[]): Promise<Record<string, { status?: string; tracking?: string }>> {
     const res = await fetch(`${this.baseUrl}/api/v2/me/shipment/tracking`, {
       method: 'POST',
       headers: this.headers,

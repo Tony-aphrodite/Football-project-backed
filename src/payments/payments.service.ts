@@ -13,6 +13,7 @@ import { Gsi, Keys } from '../dynamodb/keys';
 import { OrderRecord } from '../orders/entities/order.entity';
 import type { SavedCard, UserRecord } from '../users/entities/user.entity';
 import { PagarmeService, type PagarmeCharge } from './pagarme.service';
+import { currentPagarmeMode, withCurrentPagarmeIds, type PagarmeIds } from './pagarme-mode';
 import { ShippingService } from '../shipping/shipping.service';
 import { UsersService } from '../users/users.service';
 import { DeveloperEarningsService } from '../developer-earnings/developer-earnings.service';
@@ -135,8 +136,8 @@ export class PaymentsService {
 
     // Load seller for recipient ID (split payment)
     const sellerKey = Keys.user(order.sellerId);
-    const seller    = await this.db.get<{ pagarmeRecipientId?: string }>(sellerKey.PK, sellerKey.SK);
-    const split = await this.splitRecipients(seller?.pagarmeRecipientId);
+    const seller    = await this.db.get<PagarmeIds>(sellerKey.PK, sellerKey.SK);
+    const split = await this.splitRecipients(seller && withCurrentPagarmeIds(seller).pagarmeRecipientId);
 
     const pagarmeOrder = await this.pagarme.createPixOrder({
       externalCode:     `ARENA-${orderId}`,
@@ -237,8 +238,10 @@ export class PaymentsService {
 
     // Fetch buyer data — required by Pagar.me
     const buyerKey = Keys.user(buyerId);
-    const buyer = await this.db.get<UserRecord>(buyerKey.PK, buyerKey.SK);
-    if (!buyer) throw new NotFoundException('Buyer profile not found');
+    const storedBuyer = await this.db.get<UserRecord>(buyerKey.PK, buyerKey.SK);
+    if (!storedBuyer) throw new NotFoundException('Buyer profile not found');
+    // A customer and saved card from the other Pagar.me mode do not exist here.
+    const buyer = withCurrentPagarmeIds(storedBuyer);
 
     const cpf   = buyer.cpf ?? '00000000000';
     const phone = buyer.phoneE164 ?? '+5511999999999';
@@ -251,8 +254,8 @@ export class PaymentsService {
 
     // Load seller for split payment
     const sellerKey = Keys.user(order.sellerId);
-    const seller    = await this.db.get<{ pagarmeRecipientId?: string }>(sellerKey.PK, sellerKey.SK);
-    const split = await this.splitRecipients(seller?.pagarmeRecipientId);
+    const seller    = await this.db.get<PagarmeIds>(sellerKey.PK, sellerKey.SK);
+    const split = await this.splitRecipients(seller && withCurrentPagarmeIds(seller).pagarmeRecipientId);
 
     const billingAddress = buyer.sellerCep && buyer.sellerRua && buyer.sellerCidade && buyer.sellerEstado
       ? {
@@ -289,8 +292,8 @@ export class PaymentsService {
           if (!buyer.pagarmeCustomerId) {
             await this.db.update({
               Key: { PK: buyerKey.PK, SK: buyerKey.SK },
-              UpdateExpression: 'SET pagarmeCustomerId = :c',
-              ExpressionAttributeValues: { ':c': customerId },
+              UpdateExpression: 'SET pagarmeCustomerId = :c, pagarmeCustomerMode = :m',
+              ExpressionAttributeValues: { ':c': customerId, ':m': currentPagarmeMode() },
             });
           }
           const card = await this.pagarme.createCustomerCard(customerId, {
@@ -564,9 +567,14 @@ export class PaymentsService {
             continue;
           }
         } catch (err) {
-          // Unknown remote state: never cancel something that might be paid.
-          this.logger.warn(`Skipping expiry of ${order.orderId}: Pagar.me lookup failed`, err);
-          continue;
+          // 404: Pagar.me has no such order under these keys — it was made
+          // with the other mode's keys, so it can never be paid here and
+          // expires like an order that was never charged. Any other failure is
+          // an unknown remote state: never cancel something that might be paid.
+          if ((err as { status?: number }).status !== 404) {
+            this.logger.warn(`Skipping expiry of ${order.orderId}: Pagar.me lookup failed`, err);
+            continue;
+          }
         }
       }
       if (!expired) continue;
@@ -583,20 +591,23 @@ export class PaymentsService {
    * In sandbox the split is dropped (with a warning) when Arena's recipient is
    * missing, unknown to Pagar.me, or the same as the seller's — otherwise
    * every test payment fails on "Recipient not found" and nothing else can be
-   * tested. In production the split is never dropped: the money must be shared
-   * correctly, so a broken setup has to fail loudly instead.
+   * tested. In production the split is only dropped when the seller is Arena
+   * itself (an account set to Arena's recipient): the whole amount is Arena's
+   * anyway. Otherwise the money must be shared correctly, so a broken setup
+   * has to fail loudly instead.
    */
   private async splitRecipients(sellerRecipientId?: string): Promise<{ arena: string; seller: string } | null> {
     const arena = this.config.get('pagarme.arenaRecipientId', { infer: true });
     if (!arena || !sellerRecipientId) return null;
 
+    if (arena === sellerRecipientId) {
+      this.logger.warn('Arena and seller share a recipient — charging without split');
+      return null;
+    }
+
     const sandbox = !!this.config.get('pagarme.apiKey', { infer: true })?.startsWith('sk_test_');
     if (!sandbox) return { arena, seller: sellerRecipientId };
 
-    if (arena === sellerRecipientId) {
-      this.logger.warn('Sandbox: Arena and seller share a recipient — charging without split');
-      return null;
-    }
     // Checked once per process; a sandbox account rarely changes mid-run.
     this.arenaRecipientOk ??= this.pagarme.recipientExists(arena)
       .then((r) => r.exists)
@@ -666,7 +677,8 @@ export class PaymentsService {
     if (!order?.pagarmeOrderId) throw new NotFoundException('Order has no Pagar.me order');
     const remote = await this.pagarme.getOrder(order.pagarmeOrderId);
     const sellerKey = Keys.user(order.sellerId);
-    const seller = await this.db.get<{ pagarmeRecipientId?: string }>(sellerKey.PK, sellerKey.SK);
+    const stored = await this.db.get<PagarmeIds>(sellerKey.PK, sellerKey.SK);
+    const seller = stored && withCurrentPagarmeIds(stored);
     const arenaId = this.config.get('pagarme.arenaRecipientId', { infer: true });
     const check = async (id?: string) => (id ? { idSuffix: id.slice(-6), ...(await this.pagarme.recipientExists(id)) } : null);
     return {
@@ -712,9 +724,10 @@ export class PaymentsService {
   /** Forget the saved card: removed from Pagar.me's vault and from the account. */
   async removeSavedCard(userId: string): Promise<void> {
     const key  = Keys.user(userId);
-    const user = await this.db.get<UserRecord>(key.PK, key.SK);
-    if (!user?.savedCard) return;
-    if (user.pagarmeCustomerId) {
+    const stored = await this.db.get<UserRecord>(key.PK, key.SK);
+    if (!stored?.savedCard) return;
+    const user = withCurrentPagarmeIds(stored);
+    if (user.pagarmeCustomerId && user.savedCard) {
       await this.pagarme.deleteCustomerCard(user.pagarmeCustomerId, user.savedCard.cardId)
         .catch((err) => this.logger.warn(`Pagar.me card delete failed for ${userId}`, err));
     }

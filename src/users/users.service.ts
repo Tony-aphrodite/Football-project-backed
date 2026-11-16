@@ -9,6 +9,7 @@ import { assertAdult } from '../common/age';
 import { Keys } from '../dynamodb/keys';
 import { R2Service } from '../r2/r2.service';
 import { toPublic, type UserRecord, type UserPublic } from './entities/user.entity';
+import { currentPagarmeMode, withCurrentPagarmeIds } from '../payments/pagarme-mode';
 
 interface CreateUserInput {
   displayName: string;
@@ -278,7 +279,7 @@ export class UsersService {
   }
 
   async getRecipientId(userId: string): Promise<{ pagarmeRecipientId?: string }> {
-    const u = await this.getById(userId);
+    const u = withCurrentPagarmeIds(await this.getById(userId));
     return { pagarmeRecipientId: u.pagarmeRecipientId };
   }
 
@@ -286,10 +287,10 @@ export class UsersService {
     const u = await this.getById(userId);
     await this.db.update({
       Key:                       { PK: u.PK, SK: u.SK },
-      UpdateExpression:          'SET pagarmeRecipientId = :r, updatedAt = :now',
-      ExpressionAttributeValues: { ':r': recipientId, ':now': new Date().toISOString() },
+      UpdateExpression:          'SET pagarmeRecipientId = :r, pagarmeRecipientMode = :m, updatedAt = :now',
+      ExpressionAttributeValues: { ':r': recipientId, ':m': currentPagarmeMode(), ':now': new Date().toISOString() },
     });
-    return toPublic({ ...u, pagarmeRecipientId: recipientId });
+    return toPublic({ ...u, pagarmeRecipientId: recipientId, pagarmeRecipientMode: currentPagarmeMode() });
   }
 
   async updateSellerCep(
@@ -355,7 +356,7 @@ export class UsersService {
     bankAccount: string;
     bankAccountDigit: string;
   }, pagarme: import('../payments/pagarme.service').PagarmeService): Promise<UserPublic> {
-    const u = await this.getById(userId);
+    const u = withCurrentPagarmeIds(await this.getById(userId));
     if (u.bankLockedAt) throw new Error('LOCKED');
     if (!u.nomeCompleto || !u.email || !u.cpf) throw new Error('Complete Dados Pessoais first');
 
@@ -376,7 +377,7 @@ export class UsersService {
       UpdateExpression: [
         'SET bankCode = :bc, bankAgency = :ba, bankAgencyDigit = :bad,',
         'bankAccount = :bac, bankAccountDigit = :bacd,',
-        'bankLockedAt = :l, pagarmeRecipientId = :r, updatedAt = :now',
+        'bankLockedAt = :l, pagarmeRecipientId = :r, pagarmeRecipientMode = :m, updatedAt = :now',
       ].join(' '),
       ExpressionAttributeValues: {
         ':bc':   data.bankCode,
@@ -386,14 +387,15 @@ export class UsersService {
         ':bacd': data.bankAccountDigit,
         ':l':    now,
         ':r':    recipient.id,
+        ':m':    currentPagarmeMode(),
         ':now':  now,
       },
     });
-    return toPublic({ ...u, ...data, bankLockedAt: now, pagarmeRecipientId: recipient.id });
+    return toPublic({ ...u, ...data, bankLockedAt: now, pagarmeRecipientId: recipient.id, pagarmeRecipientMode: currentPagarmeMode() });
   }
 
   async getFinanceiroBalance(userId: string, pagarme: import('../payments/pagarme.service').PagarmeService): Promise<{ available: number; waitingFunds: number; hasRecipient: boolean }> {
-    const u = await this.getById(userId);
+    const u = withCurrentPagarmeIds(await this.getById(userId));
     if (!u.pagarmeRecipientId) return { available: 0, waitingFunds: 0, hasRecipient: false };
     const bal = await pagarme.getRecipientBalance(u.pagarmeRecipientId);
     return { ...bal, hasRecipient: true };
@@ -415,7 +417,7 @@ export class UsersService {
     password?: string;
     totpCode?: string;
   }, pagarme: import('../payments/pagarme.service').PagarmeService): Promise<UserPublic> {
-    const u = await this.getById(userId);
+    const u = withCurrentPagarmeIds(await this.getById(userId));
     if (!u.bankLockedAt || !u.pagarmeRecipientId) {
       throw new BadRequestException('Você ainda não tem conta bancária cadastrada.');
     }
@@ -485,7 +487,7 @@ export class UsersService {
   }
 
   async requestWithdrawal(userId: string, amountCents: number, pagarme: import('../payments/pagarme.service').PagarmeService): Promise<{ id: string; status: string; amount: number }> {
-    const u = await this.getById(userId);
+    const u = withCurrentPagarmeIds(await this.getById(userId));
     if (!u.pagarmeRecipientId) throw new Error('No recipient registered');
     if (u.bankChangedAt) {
       const releaseAt = new Date(new Date(u.bankChangedAt).getTime() + BANK_CHANGE_HOLD_MS);
@@ -500,7 +502,7 @@ export class UsersService {
   }
 
   async getWithdrawalHistory(userId: string, pagarme: import('../payments/pagarme.service').PagarmeService): Promise<{ id: string; status: string; amount: number; createdAt: string }[]> {
-    const u = await this.getById(userId);
+    const u = withCurrentPagarmeIds(await this.getById(userId));
     if (!u.pagarmeRecipientId) return [];
     return pagarme.getWithdrawals(u.pagarmeRecipientId);
   }

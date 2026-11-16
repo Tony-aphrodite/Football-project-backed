@@ -8,6 +8,8 @@
  * `toPublic()` projection.
  */
 
+import { withCurrentPagarmeIds, type PagarmeMode } from '../../payments/pagarme-mode';
+
 export type UserStatus = 'ACTIVE' | 'SUSPENDED' | 'DELETED';
 
 export interface UserRecord {
@@ -47,8 +49,9 @@ export interface UserRecord {
   sellerBairro?:  string;
   sellerCidade?:  string;
   sellerEstado?:  string;
-  // Pagar.me recipient ID for payment split
+  // Pagar.me recipient ID for payment split, and the key mode that created it
   pagarmeRecipientId?: string;
+  pagarmeRecipientMode?: PagarmeMode;
 
   // Soft caps enforced server-side.
   listingsActiveCount: number;   // hard cap of 20
@@ -87,6 +90,7 @@ export interface UserRecord {
   bankLockedAt?: string;      // ISO timestamp; set when user saves bank data
   bankChangedAt?: string;     // ISO timestamp of the last bank account change; withdrawals wait 48h after it
   pagarmeCustomerId?: string; // Pagar.me customer that owns the saved card
+  pagarmeCustomerMode?: PagarmeMode;
   savedCard?: SavedCard;      // card kept in Pagar.me's vault — never the number or CVV
 
   status: UserStatus;
@@ -143,7 +147,8 @@ export interface SavedCard {
   expYear:  number;
 }
 
-export function toPublic(u: UserRecord): UserPublic {
+export function toPublic(record: UserRecord): UserPublic {
+  const u = withCurrentPagarmeIds(record);
   return {
     userId: u.userId,
     displayName: u.displayName,

@@ -6,6 +6,7 @@ import { EmailService } from '../email/email.service';
 import { accountDeletedEmail } from '../email/email.templates';
 import { ListingsService } from '../listings/listings.service';
 import { PagarmeService } from '../payments/pagarme.service';
+import { withCurrentPagarmeIds } from '../payments/pagarme-mode';
 import { UsersService } from '../users/users.service';
 import { assertReauthenticated } from '../auth/reauth';
 import type { OrderRecord } from '../orders/entities/order.entity';
@@ -75,8 +76,9 @@ export class AccountService {
       );
     }
 
-    if (user.savedCard && user.pagarmeCustomerId) {
-      await this.pagarme.deleteCustomerCard(user.pagarmeCustomerId, user.savedCard.cardId).catch(() => undefined);
+    const vault = withCurrentPagarmeIds(user);
+    if (vault.savedCard && vault.pagarmeCustomerId) {
+      await this.pagarme.deleteCustomerCard(vault.pagarmeCustomerId, vault.savedCard.cardId).catch(() => undefined);
     }
 
     // Say goodbye while we still have the address.
