@@ -30,7 +30,7 @@ describe('PagarmeService.createRecipient', () => {
       type: 'individual',
       document: '12345678909',
       birthdate: '10/02/1990',
-      monthly_income: 3500,
+      monthly_income: 350000, // centavos
       professional_occupation: 'Professora',
       site_url: 'https://www.arenadosmantos.app.br',
       phone_numbers: [{ ddd: '21', number: '994647568', type: 'mobile' }],

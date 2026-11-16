@@ -553,12 +553,8 @@ export class UsersService {
   async requestWithdrawal(userId: string, amountCents: number, pagarme: import('../payments/pagarme.service').PagarmeService): Promise<{ id: string; status: string; amount: number }> {
     const u = withCurrentPagarmeIds(await this.getById(userId));
     if (!u.pagarmeRecipientId) throw new Error('No recipient registered');
-    // Pagar.me only lets an `active` recipient withdraw; say why up front.
     const { status } = await pagarme.getRecipientStatus(u.pagarmeRecipientId).catch(() => ({ status: undefined }));
-    if (status === 'registration' || status === 'affiliation') {
-      throw new BadRequestException('Conclua a verificação de identidade da Pagar.me, aqui em Financeiro, antes de sacar.');
-    }
-    if (status && status !== 'active') {
+    if (status === 'refused' || status === 'suspended' || status === 'blocked' || status === 'inactive') {
       throw new BadRequestException('Saques indisponíveis: a Pagar.me não aprovou seu cadastro. Fale com contato@arenadosmantos.app.br.');
     }
     if (u.bankChangedAt) {
@@ -570,7 +566,21 @@ export class UsersService {
         throw new BadRequestException(`Por segurança, saques ficam bloqueados por 48 horas após trocar a conta bancária. Liberado em ${when}.`);
       }
     }
-    return pagarme.createWithdrawal(u.pagarmeRecipientId, amountCents);
+    try {
+      return await pagarme.createWithdrawal(u.pagarmeRecipientId, amountCents);
+    } catch (err) {
+      // A recipient still in registration may not withdraw once Pagar.me's
+      // identity check is switched on for the account (it is not yet, per
+      // Pagar.me ticket 05908359), so Pagar.me decides and its refusal is
+      // explained here.
+      const code = (err as { status?: number }).status ?? 0;
+      if (code >= 400 && code < 500 && (status === 'registration' || status === 'affiliation')) {
+        throw new BadRequestException(status === 'affiliation'
+          ? 'Conclua a verificação de identidade da Pagar.me, aqui em Financeiro, antes de sacar.'
+          : 'Seu cadastro na Pagar.me ainda está em análise. Tente sacar mais tarde.');
+      }
+      throw err;
+    }
   }
 
   async getWithdrawalHistory(userId: string, pagarme: import('../payments/pagarme.service').PagarmeService): Promise<{ id: string; status: string; amount: number; createdAt: string }[]> {

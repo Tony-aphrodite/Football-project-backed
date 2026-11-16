@@ -318,7 +318,7 @@ export class PagarmeService {
     email: string;
     birthDate: string;          // yyyy-mm-dd, as stored on the user
     phoneE164: string;
-    monthlyIncome: number;      // in reais
+    monthlyIncome: number;      // in reais; Pagar.me takes centavos
     occupation: string;
     address: {
       street: string;
@@ -338,7 +338,8 @@ export class PagarmeService {
     const cpf = params.cpf.replace(/\D/g, '');
     // +55 21 99464-7568 → DDD "21", number "994647568"
     const phone = params.phoneE164.replace(/\D/g, '').replace(/^55/, '');
-    // Pagar.me's request examples write it as dd/mm/yyyy.
+    // Formats confirmed by Pagar.me support (ticket 05908359): birth date as
+    // dd/mm/yyyy, monthly income in centavos.
     const [y, m, d] = params.birthDate.slice(0, 10).split('-');
     return this.request('POST', '/recipients', {
       register_information: {
@@ -347,7 +348,7 @@ export class PagarmeService {
         email: params.email,
         document: cpf,
         birthdate: `${d}/${m}/${y}`,
-        monthly_income: Math.round(params.monthlyIncome),
+        monthly_income: Math.round(params.monthlyIncome * 100),
         professional_occupation: params.occupation,
         site_url: 'https://www.arenadosmantos.app.br',
         phone_numbers: [{ ddd: phone.slice(0, 2), number: phone.slice(2), type: 'mobile' }],
@@ -402,6 +403,8 @@ export class PagarmeService {
 
   /**
    * Link to Pagar.me's identity check (prova de vida), valid for 20 minutes.
+   * The check is not yet switched on for Arena's account (ticket 05908359)
+   * but will become mandatory.
    * Pagar.me answers 404 until it has asked for the check (KYC
    * `partially_denied`). The docs and the SDK name the fields differently, so
    * both spellings are read.
