@@ -1,5 +1,5 @@
 import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post, Request, UseGuards } from '@nestjs/common';
-import { IsInt, IsOptional, IsString, Length, Matches, MaxLength, Min } from 'class-validator';
+import { IsInt, IsOptional, IsString, Length, Matches, Max, MaxLength, Min } from 'class-validator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { AdminGuard } from '../common/guards/admin.guard';
 import { UsersService } from './users.service';
@@ -48,6 +48,12 @@ class UpdateBankDto {
   @IsOptional() @IsString()   bankAgencyDigit?: string;
   @IsString() @Length(1, 15)  bankAccount!: string;
   @IsString() @Length(1, 2)   bankAccountDigit!: string;
+}
+
+/** First registration also carries what Pagar.me asks for (since app 1.0.39). */
+class RegisterBankDto extends UpdateBankDto {
+  @IsOptional() @IsInt() @Min(0) @Max(100_000_000) monthlyIncome?: number;   // reais
+  @IsOptional() @IsString() @Length(2, 100)          professionalOccupation?: string;
 }
 
 class ChangeBankDto extends UpdateBankDto {
@@ -150,7 +156,7 @@ export class UsersController {
 
   @UseGuards(JwtAuthGuard)
   @Post('me/financeiro/bank')
-  async updateBankData(@Body() dto: UpdateBankDto, @Request() req: { user: JwtPayload }) {
+  async updateBankData(@Body() dto: RegisterBankDto, @Request() req: { user: JwtPayload }) {
     try {
       return await this.users.updateBankData(req.user.sub, dto, this.pagarme);
     } catch (e) {
@@ -172,6 +178,13 @@ export class UsersController {
   @Get('me/financeiro/balance')
   getBalance(@Request() req: { user: JwtPayload }) {
     return this.users.getFinanceiroBalance(req.user.sub, this.pagarme);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @Post('me/financeiro/kyc-link')
+  createKycLink(@Request() req: { user: JwtPayload }) {
+    return this.users.createKycLink(req.user.sub, this.pagarme);
   }
 
   @UseGuards(JwtAuthGuard)

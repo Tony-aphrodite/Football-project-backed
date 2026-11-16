@@ -306,27 +306,67 @@ export class PagarmeService {
   }
 
   /** Creates a Pagar.me recipient (seller bank account). */
+  /**
+   * Registers a seller as a recipient, in the format Pagar.me has required
+   * since 30/11/2024 (`register_information`); the old top-level name /
+   * document body is only still accepted by the sandbox. Monthly income and
+   * occupation are passed through and not stored by Arena.
+   */
   async createRecipient(params: {
     name: string;
     cpf: string;
     email: string;
+    birthDate: string;          // yyyy-mm-dd, as stored on the user
+    phoneE164: string;
+    monthlyIncome: number;      // in reais
+    occupation: string;
+    address: {
+      street: string;
+      number: string;
+      complement?: string;
+      neighborhood: string;
+      city: string;
+      state: string;
+      zipCode: string;
+    };
     bankCode: string;
     bankAgency: string;
     bankAgencyDigit?: string;
     bankAccount: string;
     bankAccountDigit: string;
   }): Promise<{ id: string; status: string }> {
+    const cpf = params.cpf.replace(/\D/g, '');
+    // +55 21 99464-7568 → DDD "21", number "994647568"
+    const phone = params.phoneE164.replace(/\D/g, '').replace(/^55/, '');
+    // Pagar.me's request examples write it as dd/mm/yyyy.
+    const [y, m, d] = params.birthDate.slice(0, 10).split('-');
     return this.request('POST', '/recipients', {
-      name: params.name,
-      email: params.email,
-      description: `Vendedor Arena dos Mantos — ${params.name}`,
-      document: params.cpf.replace(/\D/g, ''),
-      document_type: 'CPF',
-      type: 'individual',
+      register_information: {
+        type: 'individual',
+        name: params.name,
+        email: params.email,
+        document: cpf,
+        birthdate: `${d}/${m}/${y}`,
+        monthly_income: Math.round(params.monthlyIncome),
+        professional_occupation: params.occupation,
+        site_url: 'https://www.arenadosmantos.app.br',
+        phone_numbers: [{ ddd: phone.slice(0, 2), number: phone.slice(2), type: 'mobile' }],
+        address: {
+          street: params.address.street,
+          street_number: params.address.number,
+          // Both are required and may not be empty.
+          complementary: params.address.complement?.trim() || 'Não informado',
+          reference_point: 'Não informado',
+          neighborhood: params.address.neighborhood,
+          city: params.address.city,
+          state: params.address.state,
+          zip_code: params.address.zipCode.replace(/\D/g, ''),
+        },
+      },
       default_bank_account: {
         holder_name: params.name,
         holder_type: 'individual',
-        holder_document: params.cpf.replace(/\D/g, ''),
+        holder_document: cpf,
         bank: params.bankCode,
         branch_number: params.bankAgency,
         branch_check_digit: params.bankAgencyDigit || '0',
@@ -346,6 +386,32 @@ export class PagarmeService {
         delay: null,
       },
     });
+  }
+
+  /**
+   * A recipient's registration status: `registration` and `affiliation` can
+   * receive sales but not withdraw; `active` can do both; `refused`,
+   * `suspended`, `blocked` and `inactive` can do neither.
+   */
+  async getRecipientStatus(recipientId: string): Promise<{ status?: string; kycStatus?: string }> {
+    const r = await this.request<{ status?: string; kyc_details?: { status?: string } }>(
+      'GET', `/recipients/${recipientId}`,
+    );
+    return { status: r.status, kycStatus: r.kyc_details?.status };
+  }
+
+  /**
+   * Link to Pagar.me's identity check (prova de vida), valid for 20 minutes.
+   * Pagar.me answers 404 until it has asked for the check (KYC
+   * `partially_denied`). The docs and the SDK name the fields differently, so
+   * both spellings are read.
+   */
+  async createKycLink(recipientId: string): Promise<{ url: string; expiresAt?: string }> {
+    const r = await this.request<{ url?: string; expires_at?: string; expiration_date?: string }>(
+      'POST', `/recipients/${recipientId}/kyc_link`,
+    );
+    if (!r.url) throw new Error('Pagar.me returned no KYC link');
+    return { url: r.url, expiresAt: r.expires_at ?? r.expiration_date };
   }
 
   /**

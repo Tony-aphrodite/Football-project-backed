@@ -355,21 +355,65 @@ export class UsersService {
     bankAgencyDigit?: string;
     bankAccount: string;
     bankAccountDigit: string;
+    monthlyIncome?: number;
+    professionalOccupation?: string;
   }, pagarme: import('../payments/pagarme.service').PagarmeService): Promise<UserPublic> {
     const u = withCurrentPagarmeIds(await this.getById(userId));
     if (u.bankLockedAt) throw new Error('LOCKED');
     if (!u.nomeCompleto || !u.email || !u.cpf) throw new Error('Complete Dados Pessoais first');
 
-    const recipient = await pagarme.createRecipient({
-      name: u.nomeCompleto,
-      cpf: u.cpf,
-      email: u.email,
-      bankCode: data.bankCode,
-      bankAgency: data.bankAgency,
-      bankAgencyDigit: data.bankAgencyDigit,
-      bankAccount: data.bankAccount,
-      bankAccountDigit: data.bankAccountDigit,
-    });
+    // Everything else Pagar.me asks for to register a recipient. App versions
+    // before 1.0.39 do not send income and occupation.
+    if (data.monthlyIncome === undefined || !data.professionalOccupation?.trim()) {
+      throw new BadRequestException('Atualize o aplicativo para cadastrar sua conta bancária.');
+    }
+    if (!u.birthDate) throw new BadRequestException('Informe sua data de nascimento em Perfil > Dados Pessoais.');
+    const phone = u.phoneE164 ?? u.contactPhone;
+    if (!phone) throw new BadRequestException('Adicione um telefone celular em Perfil > Dados Pessoais.');
+    if (!u.sellerCep || !u.sellerRua || !u.sellerNumero || !u.sellerBairro || !u.sellerCidade || !u.sellerEstado) {
+      throw new BadRequestException('Preencha seu endereço completo em Perfil antes de cadastrar a conta bancária.');
+    }
+
+    let recipient: { id: string; status: string };
+    try {
+      recipient = await pagarme.createRecipient({
+        name: u.nomeCompleto,
+        cpf: u.cpf,
+        email: u.email,
+        birthDate: u.birthDate,
+        phoneE164: phone,
+        monthlyIncome: data.monthlyIncome,
+        occupation: data.professionalOccupation.trim(),
+        address: {
+          street: u.sellerRua,
+          number: u.sellerNumero,
+          complement: u.sellerComplemento,
+          neighborhood: u.sellerBairro,
+          city: u.sellerCidade,
+          state: u.sellerEstado,
+          zipCode: u.sellerCep,
+        },
+        bankCode: data.bankCode,
+        bankAgency: data.bankAgency,
+        bankAgencyDigit: data.bankAgencyDigit,
+        bankAccount: data.bankAccount,
+        bankAccountDigit: data.bankAccountDigit,
+      });
+    } catch (err) {
+      const status = (err as { status?: number }).status;
+      if (status === 400 || status === 422) {
+        // Name the fields Pagar.me objected to, so a refusal can be traced.
+        let fields = '';
+        try {
+          const errors = (JSON.parse((err as { body?: string }).body ?? '') as { errors?: Record<string, unknown> }).errors;
+          if (errors) fields = ` (${Object.keys(errors).join(', ')})`;
+        } catch { /* not JSON */ }
+        throw new BadRequestException(
+          `A Pagar.me recusou o cadastro${fields}. Confira seus dados ou fale com contato@arenadosmantos.app.br.`,
+        );
+      }
+      throw err;
+    }
 
     const now = new Date().toISOString();
     await this.db.update({
@@ -394,11 +438,31 @@ export class UsersService {
     return toPublic({ ...u, ...data, bankLockedAt: now, pagarmeRecipientId: recipient.id, pagarmeRecipientMode: currentPagarmeMode() });
   }
 
-  async getFinanceiroBalance(userId: string, pagarme: import('../payments/pagarme.service').PagarmeService): Promise<{ available: number; waitingFunds: number; hasRecipient: boolean }> {
+  async getFinanceiroBalance(userId: string, pagarme: import('../payments/pagarme.service').PagarmeService): Promise<{
+    available: number; waitingFunds: number; hasRecipient: boolean; recipientStatus?: string; kycStatus?: string;
+  }> {
     const u = withCurrentPagarmeIds(await this.getById(userId));
     if (!u.pagarmeRecipientId) return { available: 0, waitingFunds: 0, hasRecipient: false };
-    const bal = await pagarme.getRecipientBalance(u.pagarmeRecipientId);
-    return { ...bal, hasRecipient: true };
+    const [bal, reg] = await Promise.all([
+      pagarme.getRecipientBalance(u.pagarmeRecipientId),
+      // The status only decides whether the app offers the identity check.
+      pagarme.getRecipientStatus(u.pagarmeRecipientId).catch(() => ({ status: undefined, kycStatus: undefined })),
+    ]);
+    return { ...bal, hasRecipient: true, recipientStatus: reg.status, kycStatus: reg.kycStatus };
+  }
+
+  /** Link to Pagar.me's identity check, which a seller needs before withdrawing. */
+  async createKycLink(userId: string, pagarme: import('../payments/pagarme.service').PagarmeService): Promise<{ url: string; expiresAt?: string }> {
+    const u = withCurrentPagarmeIds(await this.getById(userId));
+    if (!u.pagarmeRecipientId) throw new BadRequestException('Cadastre sua conta bancária primeiro.');
+    try {
+      return await pagarme.createKycLink(u.pagarmeRecipientId);
+    } catch (err) {
+      if ((err as { status?: number }).status === 404) {
+        throw new BadRequestException('A Pagar.me ainda está analisando seu cadastro. Tente novamente em alguns minutos.');
+      }
+      throw err;
+    }
   }
 
   /**
@@ -489,6 +553,14 @@ export class UsersService {
   async requestWithdrawal(userId: string, amountCents: number, pagarme: import('../payments/pagarme.service').PagarmeService): Promise<{ id: string; status: string; amount: number }> {
     const u = withCurrentPagarmeIds(await this.getById(userId));
     if (!u.pagarmeRecipientId) throw new Error('No recipient registered');
+    // Pagar.me only lets an `active` recipient withdraw; say why up front.
+    const { status } = await pagarme.getRecipientStatus(u.pagarmeRecipientId).catch(() => ({ status: undefined }));
+    if (status === 'registration' || status === 'affiliation') {
+      throw new BadRequestException('Conclua a verificação de identidade da Pagar.me, aqui em Financeiro, antes de sacar.');
+    }
+    if (status && status !== 'active') {
+      throw new BadRequestException('Saques indisponíveis: a Pagar.me não aprovou seu cadastro. Fale com contato@arenadosmantos.app.br.');
+    }
     if (u.bankChangedAt) {
       const releaseAt = new Date(new Date(u.bankChangedAt).getTime() + BANK_CHANGE_HOLD_MS);
       if (releaseAt > new Date()) {
